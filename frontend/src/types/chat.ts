@@ -1,5 +1,5 @@
 
- * Quản lý kiểu dữ liệu cho Hội thoại, Tin nhắn và Trích dẫn Nguồn (Citation)
+// * Quản lý kiểu dữ liệu cho Hội thoại, Tin nhắn và Trích dẫn Nguồn (Citation)
 // 1. KIỂU DỮ LIỆU TRÍCH DẪN NGUỒN (Phục vụ: Source, Snippet, Page & Điều hướng)
 export interface Citation 
 {
@@ -46,5 +46,3 @@ export interface ActiveCitationState
   citation: Citation | null;
   isOpenDrawer: boolean;
 }
-=======
-
