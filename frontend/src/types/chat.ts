@@ -1,5 +1,5 @@
 
-// * Quản lý kiểu dữ liệu cho Hội thoại, Tin nhắn và Trích dẫn Nguồn (Citation)
+ * Quản lý kiểu dữ liệu cho Hội thoại, Tin nhắn và Trích dẫn Nguồn (Citation)
 // 1. KIỂU DỮ LIỆU TRÍCH DẪN NGUỒN (Phục vụ: Source, Snippet, Page & Điều hướng)
 export interface Citation 
 {
@@ -13,36 +13,35 @@ export interface Citation
   file_url?: string;         // Đường dẫn URL 
 }
 
-// 2. KIỂU DỮ LIỆU TIN NHẮN 
-export interface Message 
-{
+// 2. KIỂU DỮ LIỆU TIN NHẮN
+export interface Message {
   id: string;
-  sender: 'user' | 'assistant'; 
-  content: string;              
-  citations?: Citation[];        // Danh sách các nguồn/snippet/page đi kèm câu trả lời
-  created_at: string;        
+  sender?: 'user' | 'assistant';                    
+  role?: 'user' | 'assistant' | 'system';           // Tương thích backend
+  content: string;                                  // Nội dung câu trả lời 
+  citations?: Citation[];                            // Danh sách nguồn 
+  created_at?: string;                              // Thời gian gửi
+  status?: 'sending' | 'streaming' | 'done' | 'error'; // Trạng thái (đang gõ/đang tải/lỗi)
+  feedback?: 'thumbs_up' | 'thumbs_down' | null;     // feedback 
 }
 
-// 3. KIỂU DỮ LIỆU CUỘC HỘI THOẠI 
-export interface Conversation 
-{
+// 3. KIỂU DỮ LIỆU CUỘC HỘI THOẠI
+export interface Conversation {
   id: string;
-  title: string;                
+  title: string;
   created_at: string;
   updated_at: string;
   messages?: Message[];
 }
 
 // 4. KIỂU DỮ LIỆU REQUEST GỬI TIN NHẮN ĐẾN BACKEND
-export interface SendMessageRequest 
-{
+export interface SendMessageRequest {
   conversation_id?: string;
   content: string;
 }
 
-// 5. KIỂU DỮ LIỆU STATE ĐIỀU HƯỚNG TRÍCH DẪN (Dùng cho UI Inspector/Drawer)
-export interface ActiveCitationState 
-{
+// 5. KIỂU DỮ LIỆU ĐIỀU HƯỚNG TRÍCH DẪN 
+export interface ActiveCitationState {
   citation: Citation | null;
   isOpenDrawer: boolean;
 }
