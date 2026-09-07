@@ -20,7 +20,7 @@ export interface Citation {
 export interface Message {
   id: string;
   sender?: 'user' | 'assistant';                    
-  role?: 'user' | 'assistant' | 'system';           // [MỚI] Chuẩn tương thích AI backend
+  role?: 'user' | 'assistant' | 'system';           // Tương thích backend
   content: string;                                  // Nội dung câu trả lời 
   citations?: Citation[];                            // Danh sách nguồn 
   created_at?: string;                              // Thời gian gửi
@@ -43,7 +43,7 @@ export interface SendMessageRequest {
   content: string;
 }
 
-// 5. KIỂU DỮ LIỆU STATE ĐIỀU HƯỚNG TRÍCH DẪN (Dùng cho UI Inspector/Drawer)
+// 5. KIỂU DỮ LIỆU ĐIỀU HƯỚNG TRÍCH DẪN 
 export interface ActiveCitationState {
   citation: Citation | null;
   isOpenDrawer: boolean;
