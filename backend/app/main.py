@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.user import router as user_router
+from app.api.v1.endpoints.document import router as document_router
 from app.core.config import settings
 from app.database import Base, engine, get_db
 
@@ -40,6 +41,7 @@ app.add_middleware(
 # Register API routers
 app.include_router(auth_router, prefix=f"{settings.api_v1_str}/auth", tags=["Auth"])
 app.include_router(user_router, prefix=f"{settings.api_v1_str}/users", tags=["Users"])
+app.include_router(document_router, prefix=f"{settings.api_v1_str}/documents", tags=["Documents"])
 
 
 @app.get("/", tags=["General"])
