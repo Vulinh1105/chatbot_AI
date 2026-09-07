@@ -7,8 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.database import get_db
 from app.model.user import User
+from app.repository.document_repository import DocumentRepository
 from app.repository.user_repository import UserRepository
 from app.services.auth_service import AuthService
+from app.services.document_service import DocumentService
 from app.services.user_service import UserService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.api_v1_str}/auth/login")
@@ -31,6 +33,20 @@ def get_user_service(
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
 ) -> UserService:
     return UserService(user_repo)
+
+
+def get_document_repository(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> DocumentRepository:
+    return DocumentRepository(db)
+
+
+def get_document_service(
+    document_repo: Annotated[DocumentRepository, Depends(get_document_repository)],
+) -> DocumentService:
+    from pathlib import Path
+
+    return DocumentService(document_repo, Path(settings.documents_dir))
 
 
 async def get_current_user(

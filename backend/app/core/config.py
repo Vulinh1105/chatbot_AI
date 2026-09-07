@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 1 day
     admin_username: str = "admin"
+    documents_dir: str = "./backend/documents"
 
     @property
     def async_database_uri(self) -> str:

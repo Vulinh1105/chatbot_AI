@@ -8,6 +8,7 @@ Backend REST API cho ThinkDocu, hiện cung cấp xác thực JWT và quản lý
 - Đăng nhập bằng form OAuth2 hoặc JSON, nhận JWT access token.
 - Xem, cập nhật và xóa hồ sơ của người dùng đang đăng nhập.
 - Quản trị viên có thể xem, tạo, sửa và xóa mọi tài khoản.
+- Upload, đọc/tải xuống, thay thế và xóa file, có phân quyền theo chủ sở hữu.
 - Kiểm tra trạng thái kết nối cơ sở dữ liệu.
 - Swagger UI tự sinh tại `/docs`.
 
@@ -138,38 +139,23 @@ uvicorn --app-dir backend app.main:app --reload
 | `GET` | `/api/v1/users/{user_id}` | Xem người dùng theo ID | Admin |
 | `PUT` | `/api/v1/users/{user_id}` | Cập nhật người dùng | Admin |
 | `DELETE` | `/api/v1/users/{user_id}` | Xóa người dùng | Admin |
-
+| `POST` | `/api/v1/documents/upload` | Upload file multipart | JWT |
+| `GET` | `/api/v1/documents/` | Danh sách file của mình (admin: tất cả) | JWT |
+| `GET` | `/api/v1/documents/{document_id}` | Metadata của file | Chủ sở hữu/Admin |
+| `GET` | `/api/v1/documents/{document_id}/download` | Đọc/tải file gốc | Chủ sở hữu/Admin |
+| `PUT` | `/api/v1/documents/{document_id}` | Thay thế nội dung file bằng multipart `file` | Chủ sở hữu/Admin |
+| `DELETE` | `/api/v1/documents/{document_id}` | Xóa file | Chủ sở hữu/Admin |
 Quyền admin được cấp cho người dùng đầu tiên đăng ký (`id = 1`) hoặc người có `username` trùng với `ADMIN_USERNAME` (không phân biệt hoa/thường).
 
-## Ví dụ sử dụng
+## Quản lý tài liệu
 
-Đăng ký:
+File upload được lưu nguyên byte vào thư mục cấu hình `DOCUMENTS_DIR` (mặc định là `documents/` ở thư mục dự án). Tên file gốc, MIME type, dung lượng và chủ sở hữu được lưu trong database.
 
-```bash
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","email":"alice@example.com","password":"matkhau-it-nhat-8-ky-tu"}'
-```
+Người dùng thường chỉ có thể liệt kê, xem metadata, tải xuống, thay thế và xóa file của chính họ. Nếu truy cập ID của người khác, API trả `404`. Admin có thể thực hiện các thao tác quản lý với mọi file. Xóa tài khoản cũng dọn metadata và file của tài khoản đó.
 
-Đăng nhập bằng JSON:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/auth/login/json \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","password":"matkhau-it-nhat-8-ky-tu"}'
-```
-
-Gọi API cần xác thực:
-
-```bash
-curl http://localhost:8000/api/v1/users/me \
-  -H "Authorization: Bearer <access_token>"
-```
 
 ## Kiểm thử
 
 ```bash
 pytest -q
 ```
-
-Test hiện có bao quát luồng đăng ký, đăng nhập, JWT, phân quyền admin, cập nhật và xóa người dùng.
