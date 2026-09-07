@@ -8,6 +8,7 @@ Backend REST API cho ThinkDocu, hiện cung cấp xác thực JWT và quản lý
 - Đăng nhập bằng form OAuth2 hoặc JSON, nhận JWT access token.
 - Xem, cập nhật và xóa hồ sơ của người dùng đang đăng nhập.
 - Quản trị viên có thể xem, tạo, sửa và xóa mọi tài khoản.
+- Người dùng có thể tạo, xem, sửa và xóa các đoạn chat của mình; admin có toàn quyền với mọi đoạn chat.
 - Kiểm tra trạng thái kết nối cơ sở dữ liệu.
 - Swagger UI tự sinh tại `/docs`.
 
@@ -138,6 +139,11 @@ uvicorn --app-dir backend app.main:app --reload
 | `GET` | `/api/v1/users/{user_id}` | Xem người dùng theo ID | Admin |
 | `PUT` | `/api/v1/users/{user_id}` | Cập nhật người dùng | Admin |
 | `DELETE` | `/api/v1/users/{user_id}` | Xóa người dùng | Admin |
+| `POST` | `/api/v1/chats/` | Tạo đoạn chat | JWT |
+| `GET` | `/api/v1/chats/` | Xem các đoạn chat được phép truy cập | JWT |
+| `GET` | `/api/v1/chats/{chat_id}` | Xem một đoạn chat | JWT |
+| `PUT` | `/api/v1/chats/{chat_id}` | Sửa tiêu đề đoạn chat | JWT |
+| `DELETE` | `/api/v1/chats/{chat_id}` | Xóa đoạn chat | JWT |
 
 Quyền admin được cấp cho người dùng đầu tiên đăng ký (`id = 1`) hoặc người có `username` trùng với `ADMIN_USERNAME` (không phân biệt hoa/thường).
 

@@ -6,9 +6,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.auth import router as auth_router
+from app.api.v1.endpoints.chat import router as chat_router
 from app.api.v1.endpoints.user import router as user_router
 from app.core.config import settings
 from app.database import Base, engine, get_db
+from app.model.chat import Chat  # noqa: F401 - registers the model metadata
 
 
 @asynccontextmanager
@@ -40,6 +42,7 @@ app.add_middleware(
 # Register API routers
 app.include_router(auth_router, prefix=f"{settings.api_v1_str}/auth", tags=["Auth"])
 app.include_router(user_router, prefix=f"{settings.api_v1_str}/users", tags=["Users"])
+app.include_router(chat_router, prefix=f"{settings.api_v1_str}/chats", tags=["Chats"])
 
 
 @app.get("/", tags=["General"])
