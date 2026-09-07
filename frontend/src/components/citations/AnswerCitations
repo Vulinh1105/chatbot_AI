@@ -1,0 +1,104 @@
+import React, { useState, useId } from 'react';
+import { Citation } from '../../types/chat';
+import { CitationBadge } from './CitationBadge';
+import { SourceCard } from './SourceCard';
+import { SourceDrawer } from './SourceDrawer';
+
+interface AnswerWithCitationsProps {
+  content: string;
+  citations?: Citation[];
+}
+
+export const AnswerWithCitations: React.FC<AnswerWithCitationsProps> = ({
+  content,
+  citations = [],
+}) => {
+  const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
+  const [hoveredCitationId, setHoveredCitationId] = useState<number | null>(null);
+  const instanceId = useId();
+
+  const handleSelectCitation = (citation: Citation) => {
+    setSelectedCitation(citation);
+
+    const targetId = `source-card-${instanceId}-${citation.citation_id}`;
+    const el = document.getElementById(targetId);
+
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      el.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-50/70');
+      setTimeout(() => {
+        el.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50/70');
+      }, 1500);
+    }
+  };
+
+  const parts = content.split(/(\[\[?\d+\]?\])/g);
+
+  return (
+    <div className="space-y-3.5">
+      <div className="text-sm leading-relaxed text-slate-800 whitespace-pre-wrap">
+        {parts.map((part, idx) => {
+          const match = part.match(/\[\[?(\d+)\]?\]/);
+          if (match) {
+            const citeId = parseInt(match[1], 10);
+            const cite = citations.find((c) => c.citation_id === citeId);
+            const isHovered = hoveredCitationId === citeId;
+
+            return (
+              <span
+                key={idx}
+                className={`transition-all duration-200 inline-block rounded ${
+                  isHovered ? 'bg-amber-100 ring-2 ring-amber-400 font-bold scale-105' : ''
+                }`}
+              >
+                <CitationBadge
+                  citationId={citeId}
+                  citation={cite}
+                  onClick={handleSelectCitation}
+                />
+              </span>
+            );
+          }
+          return <span key={idx}>{part}</span>;
+        })}
+      </div>
+
+      {citations.length > 0 && (
+        <div className="pt-2.5 border-t border-slate-100">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <span>Nguồn tài liệu tham chiếu ({citations.length}):</span>
+            </p>
+            <span className="text-[10px] text-slate-400 italic">
+              Click để mở toàn văn tài liệu
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {citations.map((c) => (
+              <div
+                key={c.citation_id}
+                id={`source-card-${instanceId}-${c.citation_id}`}
+                className="transition-all duration-300 rounded-xl"
+                onMouseEnter={() => setHoveredCitationId(c.citation_id)}
+                onMouseLeave={() => setHoveredCitationId(null)}
+              >
+                <SourceCard
+                  citation={c}
+                  isSelected={selectedCitation?.citation_id === c.citation_id}
+                  onSelect={handleSelectCitation}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <SourceDrawer
+        citation={selectedCitation}
+        onClose={() => setSelectedCitation(null)}
+      />
+    </div>
+  );
+};
