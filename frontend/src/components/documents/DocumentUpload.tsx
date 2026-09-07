@@ -1,97 +1,178 @@
 import { useRef, useState } from "react";
+import type { ChangeEvent, DragEvent } from "react";
+import api from "../../services/api";
 
-const ACCEPTED_TYPES = [
-  "application/pdf",
-  "text/plain",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-];
-
-const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+type UploadStatus = "pending" | "processing" | "success" | "error";
 
 interface UploadItem {
   id: string;
   file: File;
-  status: "pending" | "processing" | "success" | "error";
+  status: UploadStatus;
   error?: string;
 }
+
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
+
+const ALLOWED_TYPES = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
+];
+
+const getErrorMessage = (error: unknown): string => {
+  const axiosError = error as {
+    response?: {
+      data?: {
+        detail?: unknown;
+      };
+    };
+    message?: string;
+  };
+
+  const detail = axiosError?.response?.data?.detail;
+
+  // Backend trả lỗi dạng chuỗi
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  // FastAPI validation error thường trả về mảng object
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (
+          typeof item === "object" &&
+          item !== null &&
+          "msg" in item
+        ) {
+          return String(
+            (item as { msg?: unknown }).msg ?? "Dữ liệu không hợp lệ"
+          );
+        }
+
+        return "Dữ liệu không hợp lệ";
+      })
+      .join(", ");
+  }
+
+  if (axiosError?.message) {
+    return axiosError.message;
+  }
+
+  return "Tải tài liệu thất bại";
+};
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const getFileIcon = (file: File): string => {
+  if (file.type === "application/pdf") {
+    return "📕";
+  }
+
+  if (
+    file.type ===
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    return "📘";
+  }
+
+  return "📄";
+};
 
 function DocumentUpload() {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const [isDragging, setIsDragging] = useState(false);
   const [items, setItems] = useState<UploadItem[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
 
   const validateFile = (file: File): string | null => {
-    if (!ACCEPTED_TYPES.includes(file.type)) {
-      return "Chỉ hỗ trợ file PDF, TXT hoặc DOCX.";
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return "Chỉ hỗ trợ file PDF, DOCX hoặc TXT";
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      return "Dung lượng file không được vượt quá 20MB.";
+      return "Kích thước file không được vượt quá 20MB";
     }
 
     return null;
   };
 
   const uploadFile = async (item: UploadItem) => {
-    setItems((current) =>
-      current.map((uploadItem) =>
-        uploadItem.id === item.id
+    setItems((prev) =>
+      prev.map((current) =>
+        current.id === item.id
           ? {
-              ...uploadItem,
+              ...current,
               status: "processing",
               error: undefined,
             }
-          : uploadItem
+          : current
       )
     );
 
     try {
-      // Mock upload.
-      // Sau này thay bằng API backend thật.
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+      const formData = new FormData();
+      formData.append("file", item.file);
 
-      setItems((current) =>
-        current.map((uploadItem) =>
-          uploadItem.id === item.id
+      await api.post("/api/v1/documents/", formData);
+
+      setItems((prev) =>
+        prev.map((current) =>
+          current.id === item.id
             ? {
-                ...uploadItem,
+                ...current,
                 status: "success",
+                error: undefined,
               }
-            : uploadItem
+            : current
         )
       );
-    } catch {
-      setItems((current) =>
-        current.map((uploadItem) =>
-          uploadItem.id === item.id
+    } catch (error) {
+      const message = getErrorMessage(error);
+
+      setItems((prev) =>
+        prev.map((current) =>
+          current.id === item.id
             ? {
-                ...uploadItem,
+                ...current,
                 status: "error",
-                error: "Upload thất bại. Vui lòng thử lại.",
+                error: message,
               }
-            : uploadItem
+            : current
         )
       );
     }
   };
 
-  const handleFiles = (files: FileList | File[]) => {
-    const fileArray = Array.from(files);
+  const addFiles = (files: File[]) => {
+    const newItems: UploadItem[] = [];
 
-    const newItems: UploadItem[] = fileArray.map((file) => {
-      const error = validateFile(file);
+    files.forEach((file) => {
+      const validationError = validateFile(file);
 
-      return {
+      const item: UploadItem = {
         id: `${file.name}-${file.lastModified}-${Math.random()}`,
         file,
-        status: error ? "error" : "pending",
-        error: error || undefined,
+        status: validationError ? "error" : "pending",
+        error: validationError ?? undefined,
       };
+
+      newItems.push(item);
     });
 
-    setItems((current) => [...current, ...newItems]);
+    setItems((prev) => [...prev, ...newItems]);
 
+    // Chỉ upload những file hợp lệ
     newItems
       .filter((item) => item.status === "pending")
       .forEach((item) => {
@@ -99,118 +180,92 @@ function DocumentUpload() {
       });
   };
 
-  const handleInputChange = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    if (event.target.files) {
-      handleFiles(event.target.files);
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+
+    if (files.length > 0) {
+      addFiles(files);
     }
 
+    // Cho phép chọn lại cùng một file
     event.target.value = "";
   };
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsDragging(false);
 
-    if (event.dataTransfer.files.length > 0) {
-      handleFiles(event.dataTransfer.files);
+    const files = Array.from(event.dataTransfer.files);
+
+    if (files.length > 0) {
+      addFiles(files);
     }
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
   };
 
   const handleRetry = (item: UploadItem) => {
     void uploadFile(item);
   };
 
-  const removeItem = (id: string) => {
-    setItems((current) =>
-      current.filter((item) => item.id !== id)
-    );
-  };
-
-  const formatFileSize = (size: number) => {
-    if (size < 1024) {
-      return `${size} B`;
-    }
-
-    if (size < 1024 * 1024) {
-      return `${(size / 1024).toFixed(1)} KB`;
-    }
-
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  const handleRemove = (id: string) => {
+    setItems((prev) => prev.filter((item) => item.id !== id));
   };
 
   return (
-    <section className="document-upload">
+    <div className="document-upload">
       <div
         className={`document-upload-zone ${
-          isDragging ? "dragging" : ""
+          isDragging ? "document-upload-zone-dragging" : ""
         }`}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={handleDrop}
         onClick={() => inputRef.current?.click()}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            inputRef.current?.click();
-          }
-        }}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
       >
+        <input
+          ref={inputRef}
+          type="file"
+          hidden
+          multiple
+          accept=".pdf,.docx,.txt"
+          onChange={handleFileChange}
+        />
+
         <div className="document-upload-icon">↑</div>
 
         <h3>Tải tài liệu lên</h3>
 
         <p>
-          Kéo & thả file vào đây hoặc{" "}
-          <span className="document-upload-link">
-            chọn file
-          </span>
+          Kéo và thả file vào đây hoặc click để chọn file
         </p>
 
-        <small>
-          Hỗ trợ PDF, TXT, DOCX · Tối đa 20MB/file
-        </small>
-
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".pdf,.txt,.docx"
-          multiple
-          hidden
-          onChange={handleInputChange}
-        />
+        <p>Hỗ trợ PDF, DOCX, TXT — tối đa 20MB</p>
       </div>
 
       {items.length > 0 && (
         <div className="document-upload-list">
           {items.map((item) => (
-            <div
-              className="document-upload-item"
-              key={item.id}
-            >
+            <div className="document-upload-item" key={item.id}>
               <div className="document-file-info">
                 <div className="document-file-icon">
-                  {item.file.name
-                    .toLowerCase()
-                    .endsWith(".pdf")
-                    ? "PDF"
-                    : item.file.name
-                        .toLowerCase()
-                        .endsWith(".docx")
-                    ? "DOCX"
-                    : "TXT"}
+                  {getFileIcon(item.file)}
                 </div>
 
                 <div>
                   <strong>{item.file.name}</strong>
-                  <span>
+
+                  <div>
                     {formatFileSize(item.file.size)}
-                  </span>
+                  </div>
                 </div>
               </div>
 
@@ -221,47 +276,45 @@ function DocumentUpload() {
 
                 {item.status === "processing" && (
                   <span className="status-processing">
-                    Đang upload...
+                    Đang tải lên...
                   </span>
                 )}
 
                 {item.status === "success" && (
                   <span className="status-success">
-                    ✓ Upload thành công
+                    Tải lên thành công
                   </span>
                 )}
 
                 {item.status === "error" && (
-                  <div className="status-error">
-                    <span>{item.error}</span>
-
-                    {item.error ===
-                      "Upload thất bại. Vui lòng thử lại." && (
-                      <button
-                        type="button"
-                        onClick={() => handleRetry(item)}
-                      >
-                        Retry
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {item.status !== "processing" && (
-                  <button
-                    type="button"
-                    className="document-remove-button"
-                    onClick={() => removeItem(item.id)}
-                  >
-                    ×
-                  </button>
+                  <span className="status-error">
+                    {item.error ?? "Tải lên thất bại"}
+                  </span>
                 )}
               </div>
+
+              {item.status === "error" && (
+                <button
+                  type="button"
+                  className="document-retry-button"
+                  onClick={() => handleRetry(item)}
+                >
+                  Thử lại
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="document-remove-button"
+                onClick={() => handleRemove(item.id)}
+              >
+                Xóa
+              </button>
             </div>
           ))}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
