@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # DATA_PATH='../data'
-DATA_PATH = Path(__file__).resolve().parent.parent.parent / 'data'
+DATA_PATH = Path(__file__).resolve().parent.parent / 'doc_processing' / 'doc'
 FAISS_PATH = Path(__file__).resolve().parent.parent.parent / 'faiss_index'
 
 def create_vector_db(docs):
@@ -30,20 +30,28 @@ def create_vector_db(docs):
     return db
 
 if __name__ == '__main__':
-    # # read json
-    # json_path = DATA_PATH / 'chunks.json'
-    # with open(json_path, 'r', encoding='utf-8') as f:
-    #     chunks = json.load(f)
-    #
-    # # json -> doc
-    # docs = [
-    #     Document(
-    #         page_content=chunk['page_content'],
-    #         metadata=chunk.get('metadata', {})
-    #     )
-    #     for chunk in chunks
-    # ]
+    # read json
+    json_path = DATA_PATH / '1_chunking.json'
+    with open(json_path, 'r', encoding='utf-8') as f:
+        chunks = json.load(f)
+
+    # json -> doc
+    docs = [
+        Document(
+            page_content=chunk['content'],
+            metadata={
+                'chunk_id': chunk['chunk_id'],
+                'document_id': chunk['document_id'],
+                'page': chunk['page'],
+                'chunk_index': chunk['chunk_index'],
+                'char_count': chunk['char_count'],
+                'strategy': chunk['strategy']
+            }
+        )
+        for chunk in chunks
+    ]
 
     print(f'Loaded {len(docs)} chunks.')
 
     create_vector_db(docs)
+    print('Done.')
