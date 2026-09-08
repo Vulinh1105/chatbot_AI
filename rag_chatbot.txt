@@ -1,0 +1,37 @@
+chatbot_AI/
+│
+├── backend/
+│   │
+│   ├── app/
+│   │   ├── doc_processing/
+│   │   │   ├── ingestion.py
+│   │   │   ├── parsing.py
+│   │   │   ├── chunking.py
+│   │   │   └── pipeline.py
+│   │   │
+│   │   ├── ai_agent/
+│   │   │   ├── embeddings.py
+│   │   │   ├── retrieval.py
+│   │   │   ├── reranking.py
+│   │   │   ├── prompt.py
+│   │   │   ├── generation.py
+│   │   │   ├── validation.py
+│   │   │   └── rag.py
+│   │   │
+│   │   ├── api/
+│   │   │   └── routes/
+│   │   │
+│   │   └── schemas/
+│   │
+│   ├── data/
+│   │   └── documents/
+│   │
+│   ├── vectorstore/
+│   
+│
+├── frontend/
+├── .env
+├── .gitignore
+
+│
+└── README.md
