@@ -9,6 +9,7 @@ from app.api.deps import (
     get_document_service,
     is_admin_user,
 )
+from app.core.config import settings
 from app.model.document import Document
 from app.model.user import User
 from app.schemas.document import DocumentResponse
@@ -31,6 +32,22 @@ def _safe_filename(filename: str | None) -> str:
     return name[:255]
 
 
+async def _read_upload_with_size_limit(file: UploadFile, max_size_bytes: int) -> bytes:
+    if file.size is not None and file.size > max_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"File exceeds the maximum upload size of {max_size_bytes} bytes",
+        )
+
+    content = await file.read(max_size_bytes + 1)
+    if len(content) > max_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"File exceeds the maximum upload size of {max_size_bytes} bytes",
+        )
+    return content
+
+
 @router.get("/", response_model=list[DocumentResponse], summary="List accessible documents")
 async def list_documents(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -51,7 +68,7 @@ async def upload_document(
 ) -> Document:
     if owner_id is not None and not is_admin_user(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can choose the document owner")
-    content = await file.read()
+    content = await _read_upload_with_size_limit(file, settings.max_upload_size_bytes)
     return await document_service.create_document(
         owner_id=owner_id or current_user.id,
         original_filename=_safe_filename(file.filename),
@@ -77,6 +94,7 @@ async def replace_document(
     document_service: Annotated[DocumentService, Depends(get_document_service)],
 ) -> Document:
     document = await document_service.get_document(document_id, current_user.id, is_admin_user(current_user))
+    content = await _read_upload_with_size_limit(file, settings.max_upload_size_bytes)
     return await document_service.replace_document(
         document,
         original_filename=_safe_filename(file.filename),
