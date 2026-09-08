@@ -2,19 +2,38 @@ import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
+
 from prompt import qa_prompt
+
+# Import trực tiếp hàm retrieve từ T13 (retrieval.py)
+try:
+    from retrieval import retrieve
+except ImportError:
+    retrieve = None
 
 load_dotenv()
 
-def generate_answer(query: str, context_chunks: list[str]) -> str:
+def generate_answer(query: str, context_chunks: list) -> str:
     """
     Hàm sinh câu trả lời bằng OpenAI dựa trên context.
+    Nhận đầu vào là danh sách đối tượng Document (từ retrieval.py) hoặc chuỗi str.
     """
-    context_text = "\n\n---\n\n".join(context_chunks)
+    # Nếu T13 không tìm thấy chunk nào phù hợp (không vượt qua score_threshold = 0.2)
+    if not context_chunks:
+        return "Tài liệu hiện tại không đề cập vấn đề này."
+
+    # Lấy thuộc tính page_content từ các Document object của FAISS
+    formatted_chunks = [
+        doc.page_content if hasattr(doc, "page_content") else str(doc)
+        for doc in context_chunks
+    ]
+    
+    context_text = "\n\n---\n\n".join(formatted_chunks)
+    
     llm = ChatOpenAI(model="gpt-5.4-nano", temperature=0)
     
-
     chain = qa_prompt | llm | StrOutputParser()
+    
     response = chain.invoke({
         "context": context_text,
         "query": query
@@ -22,23 +41,26 @@ def generate_answer(query: str, context_chunks: list[str]) -> str:
     
     return response
 
-# KHU VỰC CHẠY TEST ĐỘC LẬP (MOCK DATA)
-if __name__ == "__main__":
-#    os.environ["OPENAI_API_KEY"] = "sk-..." 
-    
-    print(" Đang khởi động test cho module  (Generation)...\n")
 
-    mock_chunks = [ 
-        "Chính sách nghỉ phép: Nhân viên chính thức được nghỉ 12 ngày phép năm.",
-        "Nhân viên thử việc (2 tháng đầu) không được tính để hưởng phép năm."
-    ]
+if __name__ == "__main__":
+    print("Khởi chạy chatbot_AI\n")
     
-    # 2. Test Case 1: Câu hỏi CÓ trong tài liệu
-    query_1 = "Nhân viên thử việc có được tính phép năm không?"
-    print(f"User hỏi: {query_1}")
-    print(f"AI đáp:   {generate_answer(query_1, mock_chunks)}\n")
-    
-    # 3. Test Case 2: Câu hỏi KHÔNG CÓ trong tài liệu (Test Guardrail MVP)
-    query_2 = "Công ty có hỗ trợ chi phí gửi xe không?"
-    print(f"User hỏi: {query_2}")
-    print(f"AI đáp:   {generate_answer(query_2, mock_chunks)}\n")
+    while True:
+        query = input('Question (type "exit" to quit): ')
+        
+        if query.strip().lower() == 'exit':
+            print('program exited.')
+            break
+            
+        if not query.strip():
+            continue
+
+        if retrieve:
+            results = retrieve(query)
+            print(f'\n[T13] Tìm thấy {len(results)} chunks phù hợp từ FAISS.\n')
+            answer = generate_answer(query, results)
+            
+            print(f"AI Answer:\n{answer}\n")
+            print("=" * 60 + "\n")
+        else:
+            print("\n[Lỗi] Không thể tìm thấy file retrieval.py cùng thư mục để import hàm retrieve().\n")
