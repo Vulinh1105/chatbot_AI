@@ -32,6 +32,8 @@ services:
       SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://${POSTGRES_USER:-thinkdocu}:${POSTGRES_PASSWORD:-thinkdocu_password}@db:5432/${POSTGRES_DB:-thinkdocu_db}
     ports:
       - "${APP_PORT:-8000}:8000"
+    volumes:
+      - ./backend/documents:/app/backend/documents
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8000/db-check').read()"]
       interval: 10s
