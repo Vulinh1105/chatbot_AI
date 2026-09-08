@@ -5,11 +5,15 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.authorization import is_admin_user
 from app.database import get_db
 from app.model.user import User
+
+from app.repository.chat_repository import ChatRepository
+from app.services.auth_service import AuthService
+from app.services.chat_service import ChatService
 from app.repository.document_repository import DocumentRepository
 from app.repository.user_repository import UserRepository
-from app.services.auth_service import AuthService
 from app.services.document_service import DocumentService
 from app.services.user_service import UserService
 
@@ -35,6 +39,18 @@ def get_user_service(
     return UserService(user_repo)
 
 
+def get_chat_repository(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ChatRepository:
+    return ChatRepository(db)
+
+
+def get_chat_service(
+    chat_repo: Annotated[ChatRepository, Depends(get_chat_repository)],
+) -> ChatService:
+    return ChatService(chat_repo)
+  
+  
 def get_document_repository(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> DocumentRepository:
@@ -56,12 +72,7 @@ async def get_current_user(
     """Resolve the authenticated user through the auth service."""
     return await auth_service.get_current_user_by_token(token)
 
-
-def is_admin_user(user: User) -> bool:
-    """Return whether the user has the application's administrator privileges."""
-    return user.id == 1 or user.username.lower() == settings.admin_username.lower()
-
-
+  
 async def get_current_admin_user(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
