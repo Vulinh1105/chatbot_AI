@@ -2,7 +2,6 @@
 from pathlib import Path
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-
 from dotenv import load_dotenv
 
 
@@ -35,13 +34,23 @@ def retrieve(query):
 
 
 if __name__ == '__main__':
-    query = input('Question: ')
+    while True:
+        query = input('Question (type "exit" to quit): ')
 
-    results = retrieve(query)
+        if query == 'exit':
+            print('program exited.')
+            break
+        if not query.strip():
+            continue
 
-    print(f'\nTìm thấy {len(results)} chunks:\n')
 
-    for i, doc in enumerate(results, start=1):
-        print(f'--- Result {i} ---')
-        print('Content:', doc.page_content)
-        print('Metadata:', doc.metadata)
+        results = retrieve(query)
+
+        print(f'\nFind {len(results)} chunks:\n')
+
+        for i, doc in enumerate(results, start=1):
+            print(f'--- Result {i} ---')
+            print('Content:', doc.page_content)
+            print('Metadata:', doc.metadata)
+
+print('số vector trg FAISS: ', db.index.ntotal)
