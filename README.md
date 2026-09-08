@@ -23,18 +23,26 @@ Backend REST API cho ThinkDocu, hiện cung cấp xác thực JWT và quản lý
 ## Cấu trúc thư mục
 
 ```text
-app/
-├── api/                 # Router và dependency xác thực
-├── model/               # SQLAlchemy models
-├── repository/          # Truy cập dữ liệu
-├── schemas/             # Request/response schemas
-├── services/            # JWT và mã hóa mật khẩu
-├── alembic/             # Database migrations
-├── config.py            # Đọc cấu hình môi trường
-├── database.py          # Async engine và database session
-└── main.py              # Khởi tạo FastAPI
-tests/
-└── test_api.py          # Kiểm thử luồng xác thực và người dùng
+└── backend              
+    ├── alembic/
+    └── app/
+        ├── ai_agent/            # 
+        ├── api/                 # Router và dependency xác thực
+        ├── core/                # Cấu hình, security...
+        ├── doc_processing/      #
+        ├── model/               # SQLAlchemy models
+        ├── repository/          # Truy cập dữ liệu
+        ├── schemas/             # Request/response schemas
+        ├── services/            # JWT và mã hóa mật khẩu
+        ├── alembic/             # Database migrations
+        ├── database.py          # Async engine và database session
+        ├── main.py              # Khởi tạo FastAPI
+        ├── data/                # Khởi tạo FastAPI
+        └── documents/           # Lưu trữ tài liệu up lên
+            ├── 1/               # Lưu trữ tài liệu theo user_id
+            └── 2/               # Lưu trữ tài liệu user_id
+    └── tests/
+        └── test_api.py          # Kiểm thử luồng xác thực và người dùng
 ```
 
 ## Yêu cầu
@@ -44,7 +52,7 @@ tests/
 
 ## Cấu hình môi trường
 
-Tạo file `.env` ở thư mục gốc dự án. Không đưa `.env` chứa khóa bí mật hoặc mật khẩu thật lên Git.
+Tạo file `.env` ở thư mục gốc dự án. Ví dụ:
 
 ```env
 API_V1_STR=/api/v1
@@ -53,6 +61,7 @@ SECRET_KEY=thay-bang-mot-chuoi-ngau-nhien-dai-va-bao-mat
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
 ADMIN_USERNAME=admin
+DOCUMENTS_DIR=./backend/documents
 ```
 
 ### Chạy toàn bộ ứng dụng bằng Docker Compose
@@ -144,38 +153,23 @@ uvicorn --app-dir backend app.main:app --reload
 | `GET` | `/api/v1/chats/{chat_id}` | Xem một đoạn chat | JWT |
 | `PUT` | `/api/v1/chats/{chat_id}` | Sửa tiêu đề đoạn chat | JWT |
 | `DELETE` | `/api/v1/chats/{chat_id}` | Xóa đoạn chat | JWT |
-
+| `POST` | `/api/v1/documents/upload` | Upload file multipart | JWT |
+| `GET` | `/api/v1/documents/` | Danh sách file của mình (admin: tất cả) | JWT |
+| `GET` | `/api/v1/documents/{document_id}` | Metadata của file | Chủ sở hữu/Admin |
+| `GET` | `/api/v1/documents/{document_id}/download` | Đọc/tải file gốc | Chủ sở hữu/Admin |
+| `PUT` | `/api/v1/documents/{document_id}` | Thay thế nội dung file bằng multipart `file` | Chủ sở hữu/Admin |
+| `DELETE` | `/api/v1/documents/{document_id}` | Xóa file | Chủ sở hữu/Admin |
 Quyền admin được cấp cho người dùng đầu tiên đăng ký (`id = 1`) hoặc người có `username` trùng với `ADMIN_USERNAME` (không phân biệt hoa/thường).
 
-## Ví dụ sử dụng
+## Quản lý tài liệu
 
-Đăng ký:
+File upload được lưu nguyên byte vào thư mục cấu hình `DOCUMENTS_DIR` (mặc định là `backend/documents/` ở thư mục dự án), theo cấu trúc `{owner_id}/{document_id}`. Đường dẫn tương đối luôn được tính từ thư mục gốc dự án, không phụ thuộc vào thư mục dùng để khởi động Uvicorn. Docker Compose mount trực tiếp thư mục này vào container để file vẫn còn sau khi container được tạo lại. Tên file gốc, MIME type, dung lượng và chủ sở hữu được lưu trong database.
 
-```bash
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","email":"alice@example.com","password":"matkhau-it-nhat-8-ky-tu"}'
-```
+Người dùng thường chỉ có thể liệt kê, xem metadata, tải xuống, thay thế và xóa file của chính họ. Nếu truy cập ID của người khác, API trả `404`. Admin có thể thực hiện các thao tác quản lý với mọi file. Xóa tài khoản cũng dọn metadata và file của tài khoản đó.
 
-Đăng nhập bằng JSON:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/auth/login/json \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","password":"matkhau-it-nhat-8-ky-tu"}'
-```
-
-Gọi API cần xác thực:
-
-```bash
-curl http://localhost:8000/api/v1/users/me \
-  -H "Authorization: Bearer <access_token>"
-```
 
 ## Kiểm thử
 
 ```bash
 pytest -q
 ```
-
-Test hiện có bao quát luồng đăng ký, đăng nhập, JWT, phân quyền admin, cập nhật và xóa người dùng.
