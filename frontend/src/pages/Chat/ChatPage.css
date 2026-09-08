@@ -1,0 +1,31 @@
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.chat-page-header h2 {
+  overflow-wrap: anywhere;
+  margin: 0 0 6px;
+  color: #111827;
+  font-size: 24px;
+}
+
+.chat-page-header p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}

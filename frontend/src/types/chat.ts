@@ -1,5 +1,5 @@
 
- * Quản lý kiểu dữ liệu cho Hội thoại, Tin nhắn và Trích dẫn Nguồn (Citation)
+// Quản lý kiểu dữ liệu cho Hội thoại, Tin nhắn và Trích dẫn Nguồn (Citation)
 // 1. KIỂU DỮ LIỆU TRÍCH DẪN NGUỒN (Phục vụ: Source, Snippet, Page & Điều hướng)
 export interface Citation 
 {
@@ -16,12 +16,13 @@ export interface Citation
 // 2. KIỂU DỮ LIỆU TIN NHẮN
 export interface Message {
   id: string;
-  sender?: 'user' | 'assistant';                    
-  role?: 'user' | 'assistant' | 'system';           // Tương thích backend
+  role: 'user' | 'assistant' | 'system';            // Nguồn duy nhất xác định người gửi
   content: string;                                  // Nội dung câu trả lời 
   citations?: Citation[];                            // Danh sách nguồn 
   created_at?: string;                              // Thời gian gửi
-  status?: 'sending' | 'streaming' | 'done' | 'error'; // Trạng thái (đang gõ/đang tải/lỗi)
+  status?: 'sending' | 'waiting' | 'streaming' | 'done' | 'error' | 'stopped';
+  error?: string;
+  attempt?: number;
   feedback?: 'thumbs_up' | 'thumbs_down' | null;     // feedback 
 }
 
