@@ -1,6 +1,6 @@
 import { memo } from "react";
-import ReactMarkdown from "react-markdown";
 import type { Message } from "../../types/chat";
+import { AnswerWithCitations } from "../citations/AnswerWithCitations";
 
 const roleLabels = { user: "Bạn", assistant: "DocBot", system: "Hệ thống" };
 
@@ -20,7 +20,7 @@ function MessageItem({ message, onRetry, busy = false }: { message: Message; onR
             </div>
           )}
           {message.role === "assistant" ? (
-            <ReactMarkdown skipHtml>{message.content}</ReactMarkdown>
+            <AnswerWithCitations content={message.content} citations={message.citations} />
           ) : (
             <p className="chat-message-text">{message.content}</p>
           )}
