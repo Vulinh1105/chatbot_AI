@@ -23,18 +23,26 @@ Backend REST API cho ThinkDocu, hiện cung cấp xác thực JWT và quản lý
 ## Cấu trúc thư mục
 
 ```text
-app/
-├── api/                 # Router và dependency xác thực
-├── model/               # SQLAlchemy models
-├── repository/          # Truy cập dữ liệu
-├── schemas/             # Request/response schemas
-├── services/            # JWT và mã hóa mật khẩu
-├── alembic/             # Database migrations
-├── config.py            # Đọc cấu hình môi trường
-├── database.py          # Async engine và database session
-└── main.py              # Khởi tạo FastAPI
-tests/
-└── test_api.py          # Kiểm thử luồng xác thực và người dùng
+└── backend              
+    ├── alembic/
+    └── app/
+        ├── ai_agent/            # 
+        ├── api/                 # Router và dependency xác thực
+        ├── core/                # Cấu hình, security...
+        ├── doc_processing/      #
+        ├── model/               # SQLAlchemy models
+        ├── repository/          # Truy cập dữ liệu
+        ├── schemas/             # Request/response schemas
+        ├── services/            # JWT và mã hóa mật khẩu
+        ├── alembic/             # Database migrations
+        ├── database.py          # Async engine và database session
+        ├── main.py              # Khởi tạo FastAPI
+        ├── data/                # Khởi tạo FastAPI
+        └── documents/           # Lưu trữ tài liệu up lên
+            ├── 1/               # Lưu trữ tài liệu theo user_id
+            └── 2/               # Lưu trữ tài liệu user_id
+    └── tests/
+        └── test_api.py          # Kiểm thử luồng xác thực và người dùng
 ```
 
 ## Yêu cầu
@@ -44,7 +52,7 @@ tests/
 
 ## Cấu hình môi trường
 
-Tạo file `.env` ở thư mục gốc dự án. Không đưa `.env` chứa khóa bí mật hoặc mật khẩu thật lên Git.
+Tạo file `.env` ở thư mục gốc dự án. Ví dụ:
 
 ```env
 API_V1_STR=/api/v1
@@ -53,6 +61,7 @@ SECRET_KEY=thay-bang-mot-chuoi-ngau-nhien-dai-va-bao-mat
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
 ADMIN_USERNAME=admin
+DOCUMENTS_DIR=./backend/documents
 ```
 
 ### Chạy toàn bộ ứng dụng bằng Docker Compose
@@ -149,7 +158,7 @@ Quyền admin được cấp cho người dùng đầu tiên đăng ký (`id = 1
 
 ## Quản lý tài liệu
 
-File upload được lưu nguyên byte vào thư mục cấu hình `DOCUMENTS_DIR` (mặc định là `documents/` ở thư mục dự án). Tên file gốc, MIME type, dung lượng và chủ sở hữu được lưu trong database.
+File upload được lưu nguyên byte vào thư mục cấu hình `DOCUMENTS_DIR` (mặc định là `backend/documents/` ở thư mục dự án), theo cấu trúc `{owner_id}/{document_id}`. Đường dẫn tương đối luôn được tính từ thư mục gốc dự án, không phụ thuộc vào thư mục dùng để khởi động Uvicorn. Docker Compose mount trực tiếp thư mục này vào container để file vẫn còn sau khi container được tạo lại. Tên file gốc, MIME type, dung lượng và chủ sở hữu được lưu trong database.
 
 Người dùng thường chỉ có thể liệt kê, xem metadata, tải xuống, thay thế và xóa file của chính họ. Nếu truy cập ID của người khác, API trả `404`. Admin có thể thực hiện các thao tác quản lý với mọi file. Xóa tài khoản cũng dọn metadata và file của tài khoản đó.
 
