@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { Message } from "../../types/chat";
-import { AnswerWithCitations } from "../citations/AnswerWithCitations";
+import { AnswerWithCitations } from "../citations/AnswerCitations";
 
 const roleLabels = { user: "Bạn", assistant: "DocBot", system: "Hệ thống" };
 
