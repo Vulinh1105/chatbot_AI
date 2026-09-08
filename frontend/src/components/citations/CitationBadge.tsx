@@ -1,5 +1,5 @@
 import React from 'react';
-import { Citation } from '../../types/chat';
+import type { Citation } from '../../types/chat';
 
 interface CitationBadgeProps {
   citationId: number;

@@ -1,4 +1,5 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 
@@ -32,7 +33,7 @@ function LoginPage() {
       // Tài khoản demo
       const isValid =
         email === "demo@docbot.local" && password === "123456";
-q
+
       if (!isValid) {
         setError("Email hoặc mật khẩu không đúng.");
         return;

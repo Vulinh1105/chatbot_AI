@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { User } from "../types/auth";
+import { useChatStore } from "./chatStore";
 
 interface AuthState {
   user: User | null;
@@ -26,6 +27,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
+    useChatStore.getState().resetChat();
     localStorage.removeItem("accessToken");
 
     set({

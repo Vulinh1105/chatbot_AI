@@ -1,6 +1,8 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useMatch } from "react-router-dom";
+import ConversationList from "../chat/ConversationList";
 
 function Sidebar() {
+  const isChat = useMatch("/chat");
   return (
     <aside className="app-sidebar">
       <div className="sidebar-logo">
@@ -10,6 +12,8 @@ function Sidebar() {
       <nav className="sidebar-nav">
         <NavLink
           to="/chat"
+          aria-label="Chat"
+          title="Chat"
           className={({ isActive }) =>
             `sidebar-link ${isActive ? "active" : ""}`
           }
@@ -20,6 +24,8 @@ function Sidebar() {
 
         <NavLink
           to="/documents"
+          aria-label="Tài liệu"
+          title="Tài liệu"
           className={({ isActive }) =>
             `sidebar-link ${isActive ? "active" : ""}`
           }
@@ -28,6 +34,7 @@ function Sidebar() {
           <span>Tài liệu</span>
         </NavLink>
       </nav>
+      {isChat && <div className="conversation-desktop"><ConversationList /></div>}
     </aside>
   );
 }
