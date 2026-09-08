@@ -11,7 +11,6 @@ from app.core.config import settings
 from app.database import Base
 from app.model.document import Document  # noqa: F401 - registers the model metadata for Alembic
 from app.model.user import User  # noqa: F401 - registers the model metadata for Alembic
-from app.model.chat import Chat  # noqa: F401 - registers the model metadata for Alembic
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
