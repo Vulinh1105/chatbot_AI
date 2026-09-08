@@ -1,4 +1,4 @@
-from pydantic import SecretStr
+from pydantic import SecretStr, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24  # 1 day
     admin_username: str = "admin"
     documents_dir: str = "./backend/documents"
+    max_upload_size_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
 
     @property
     def async_database_uri(self) -> str:
