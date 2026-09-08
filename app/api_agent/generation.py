@@ -11,7 +11,7 @@ def generate_answer(query: str, context_chunks: list[str]) -> str:
     Hàm sinh câu trả lời bằng OpenAI dựa trên context.
     """
     context_text = "\n\n---\n\n".join(context_chunks)
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    llm = ChatOpenAI(model="gpt-5.4-nano", temperature=0)
     
 
     chain = qa_prompt | llm | StrOutputParser()
