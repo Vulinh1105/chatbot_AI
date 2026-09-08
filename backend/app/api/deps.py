@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.authorization import is_admin_user
 from app.database import get_db
 from app.model.user import User
 
@@ -72,11 +73,6 @@ async def get_current_user(
     return await auth_service.get_current_user_by_token(token)
 
   
-def is_admin_user(user: User) -> bool:
-    """Return whether the user has the application's administrator privileges."""
-    return user.id == 1 or user.username.lower() == settings.admin_username.lower()
-
-
 async def get_current_admin_user(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:

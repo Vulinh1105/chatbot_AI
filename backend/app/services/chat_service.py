@@ -2,7 +2,7 @@ from typing import Sequence
 
 from fastapi import HTTPException, status
 
-from app.core.permissions import is_admin_user
+from app.core.authorization import is_admin_user
 from app.model.chat import Chat
 from app.model.user import User
 from app.repository.chat_repository import ChatRepository
