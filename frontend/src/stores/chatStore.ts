@@ -225,5 +225,3 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return true;
   },
 }));
-
-
