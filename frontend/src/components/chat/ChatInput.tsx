@@ -22,8 +22,9 @@ function ChatInput({ value, onChange, onSend, disabled = false, sendDisabled = f
   }, [disabled]);
 
   useLayoutEffect(() => {
-    if (!disabled) textareaRef.current?.focus();
-  }, [disabled]);
+    const textarea = textareaRef.current;
+    if (textarea && !textarea.disabled) textarea.focus();
+  }, []);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;

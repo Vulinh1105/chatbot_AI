@@ -24,6 +24,7 @@ interface ChatState {
 
 let activeController: AbortController | null = null;
 let flushActive: (() => void) | null = null;
+
 const initialData = () => {
   const now = new Date().toISOString();
   return {
@@ -205,20 +206,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ? Array.from(trimmed.replace(/\s+/g, " ")).slice(0, 40).join("")
         : conversation.title;
       return {
-      pendingRequest: request,
-      conversations: [
-        { ...conversation, title, updated_at: created_at },
-        ...state.conversations.filter((item) => item.id !== id),
-      ],
-      draftsByConversation: { ...state.draftsByConversation, [id]: "" },
-      messagesByConversation: {
-        ...state.messagesByConversation,
-        [id]: [
-          ...state.messagesByConversation[id],
-          ...messages,
+        pendingRequest: request,
+        conversations: [
+          { ...conversation, title, updated_at: created_at },
+          ...state.conversations.filter((item) => item.id !== id),
         ],
-      },
-    }; });
+        draftsByConversation: { ...state.draftsByConversation, [id]: "" },
+        messagesByConversation: {
+          ...state.messagesByConversation,
+          [id]: [
+            ...state.messagesByConversation[id],
+            ...messages,
+          ],
+        },
+      };
+    });
     void resolveReply(request, trimmed, 1);
     return true;
   },
