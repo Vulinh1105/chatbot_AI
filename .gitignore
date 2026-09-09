@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Environment
+.env
+
+# Frontend
+node_modules/
+
+# Generated data
+backend/faiss_index/
+
+# IDE
+.idea/
