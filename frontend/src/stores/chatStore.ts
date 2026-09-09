@@ -29,46 +29,10 @@ const initialData = () => {
   const now = new Date().toISOString();
   return {
     pendingRequest: null,
-    conversations: [{ id: LOCAL_CONVERSATION_ID, title: "Hỏi đáp tài liệu nội bộ", created_at: now, updated_at: now }],
+    conversations: [{ id: LOCAL_CONVERSATION_ID, title: "Cuộc trò chuyện mới", created_at: now, updated_at: now }],
     activeConversationId: LOCAL_CONVERSATION_ID,
     draftsByConversation: { [LOCAL_CONVERSATION_ID]: "" },
-    messagesByConversation: {
-      [LOCAL_CONVERSATION_ID]: [
-        {
-          id: "demo-user-1",
-          role: "user",
-          content: "Quy định làm việc từ xa và chế độ nghỉ phép năm 2026 thế nào?",
-          created_at: now,
-          status: "done",
-        },
-        {
-          id: "demo-bot-1",
-          role: "assistant",
-          content: "Theo quy chế làm việc mới nhất năm 2026, nhân viên chính thức được làm việc từ xa tối đa 02 ngày/tuần [[1]]. Ngoài ra, bạn được hưởng 12 ngày phép năm cơ bản có lương nguyên vẹn [[2]].",
-          created_at: now,
-          status: "done",
-          citations: [
-            {
-              citation_id: 1,
-              document_id: "doc-01",
-              document_title: "Quy_che_Lam_Viec_2026.pdf",
-              page_number: 4,
-              snippet: "Nhân viên chính thức được quyền đăng ký chế độ làm việc từ xa tối đa 02 ngày mỗi tuần với sự phê duyệt của Quản lý trực tiếp.",
-              score: 0.95,
-              file_url: "https://example.com/demo.pdf",
-            },
-            {
-              citation_id: 2,
-              document_id: "doc-02",
-              document_title: "Chinh_Sach_Nghi_Phep.pdf",
-              page_number: 12,
-              snippet: "Mỗi nhân viên có 12 ngày phép năm cơ bản, và cứ mỗi 05 năm thâm niên sẽ được cộng thêm 01 ngày phép hưởng nguyên lương.",
-              score: 0.88,
-            },
-          ],
-        },
-      ] as Message[],
-    },
+    messagesByConversation: { [LOCAL_CONVERSATION_ID]: [] as Message[] },
   };
 };
 
@@ -114,32 +78,7 @@ async function resolveReply(request: NonNullable<ChatState["pendingRequest"]>, c
         flush();
       }
     } });
-    
-    // Tự động gắn trích dẫn vào câu trả lời của Bot
-    finish({
-      content: reply + "\n\nThông tin trên được trích xuất trực tiếp từ quy định làm việc [[1]] và chính sách công ty [[2]].",
-      status: "done",
-      error: undefined,
-      citations: [
-        {
-          citation_id: 1,
-          document_id: "doc-01",
-          document_title: "Quy_che_Lam_Viec_2026.pdf",
-          page_number: 4,
-          snippet: "Nhân viên chính thức được quyền đăng ký chế độ làm việc từ xa tối đa 02 ngày mỗi tuần với sự phê duyệt của Quản lý trực tiếp.",
-          score: 0.95,
-          file_url: "https://example.com/demo.pdf",
-        },
-        {
-          citation_id: 2,
-          document_id: "doc-02",
-          document_title: "Chinh_Sach_Nghi_Phep.pdf",
-          page_number: 12,
-          snippet: "Mỗi nhân viên có 12 ngày phép năm cơ bản, và cứ mỗi 05 năm thâm niên sẽ được cộng thêm 01 ngày phép hưởng nguyên lương.",
-          score: 0.88,
-        },
-      ],
-    });
+    finish({ content: reply, status: "done", error: undefined });
   } catch {
     finish({ status: "error", error: "Không thể nhận câu trả lời. Vui lòng thử lại." });
   } finally {
@@ -157,6 +96,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!request) return;
     flushActive?.();
     flushActive = null;
+    // Invalidate identity before aborting, so even a late result cannot write back.
     set((state) => ({
       pendingRequest: null,
       messagesByConversation: {
