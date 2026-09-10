@@ -1,12 +1,11 @@
 from pathlib import Path
 from typing import Annotated, Sequence
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 
 from app.api.deps import (
     get_current_user,
-    get_current_admin_user,
     get_document_service,
     is_admin_user,
 )
@@ -60,22 +59,18 @@ async def list_documents(
     return await document_service.list_documents(owner_id=owner_id, skip=skip, limit=limit)
 
 
-@router.post(
-    "/",
-    response_model=DocumentResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Admin upload tài liệu",
-)
+@router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: Annotated[UploadFile, File(...)],
-    current_admin: Annotated[User, Depends(get_current_admin_user)],
+    current_user: Annotated[User, Depends(get_current_user)],
     document_service: Annotated[DocumentService, Depends(get_document_service)],
+    owner_id: Annotated[int | None, Form()] = None,
 ) -> Document:
     if owner_id is not None and not is_admin_user(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can choose the document owner")
     content = await _read_upload_with_size_limit(file, settings.max_upload_size_bytes)
     return await document_service.create_document(
-        owner_id=current_admin.id,
+        owner_id=owner_id or current_user.id,
         original_filename=_safe_filename(file.filename),
         content_type=file.content_type,
         content=content,
