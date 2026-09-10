@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Annotated, Sequence
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 
 from app.api.deps import (
@@ -10,6 +10,8 @@ from app.api.deps import (
     is_admin_user,
 )
 from app.core.config import settings
+from app.doc_processing import chunking
+from app.doc_processing.pipeline import run_pipeline_background
 from app.model.document import Document
 from app.model.user import User
 from app.schemas.document import DocumentResponse
@@ -64,17 +66,20 @@ async def upload_document(
     file: Annotated[UploadFile, File(...)],
     current_user: Annotated[User, Depends(get_current_user)],
     document_service: Annotated[DocumentService, Depends(get_document_service)],
+    background_tasks: BackgroundTasks,
     owner_id: Annotated[int | None, Form()] = None,
 ) -> Document:
     if owner_id is not None and not is_admin_user(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can choose the document owner")
     content = await _read_upload_with_size_limit(file, settings.max_upload_size_bytes)
-    return await document_service.create_document(
+    document = await document_service.create_document(
         owner_id=owner_id or current_user.id,
         original_filename=_safe_filename(file.filename),
         content_type=file.content_type,
         content=content,
     )
+    background_tasks.add_task(run_pipeline_background, document.id)
+    return document
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
@@ -92,15 +97,18 @@ async def replace_document(
     file: Annotated[UploadFile, File(...)],
     current_user: Annotated[User, Depends(get_current_user)],
     document_service: Annotated[DocumentService, Depends(get_document_service)],
+    background_tasks: BackgroundTasks,
 ) -> Document:
     document = await document_service.get_document(document_id, current_user.id, is_admin_user(current_user))
     content = await _read_upload_with_size_limit(file, settings.max_upload_size_bytes)
-    return await document_service.replace_document(
+    document = await document_service.replace_document(
         document,
         original_filename=_safe_filename(file.filename),
         content_type=file.content_type,
-        content=await file.read(),
+        content=content,
     )
+    background_tasks.add_task(run_pipeline_background, document.id)
+    return document
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -111,6 +119,7 @@ async def delete_document(
 ) -> None:
     document = await document_service.get_document(document_id, current_user.id, is_admin_user(current_user))
     await document_service.delete_document(document)
+    chunking.delete_chunks_by_document(document_id)
 
 
 @router.get("/{document_id}/download", response_class=FileResponse)

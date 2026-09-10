@@ -10,7 +10,7 @@ from app.repository.document_repository import DocumentRepository
 class DocumentService:
     def __init__(self, document_repo: DocumentRepository, storage_root: Path):
         self.document_repo = document_repo
-        self.storage_root = storage_root
+        self.storage_root = storage_root.resolve()
 
     async def list_documents(
         self, *, owner_id: int | None, skip: int = 0, limit: int = 100
