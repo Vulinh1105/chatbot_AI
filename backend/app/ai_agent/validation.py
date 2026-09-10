@@ -46,6 +46,7 @@ def get_source_metadata(
         or metadata.get("source_file")
         or metadata.get("file_name")
         or metadata.get("filename")
+        or metadata.get("document_name")
     )
 
     # page
@@ -62,7 +63,6 @@ def get_source_metadata(
     }
 
 
-
 def build_citations(
     chunks: List[Document]
 ) -> List[Dict[str, Any]]:
@@ -71,8 +71,7 @@ def build_citations(
     KHÔNG lấy citation do LLM tự sinh.
     """
 
-    citations = []
-    seen = set()
+    grouped = {}
 
     for chunk in chunks:
 
@@ -80,27 +79,28 @@ def build_citations(
 
         source = metadata["source"]
         page = metadata["page"]
-        chunk_index = metadata["chunk_index"]
 
         # Không có source -> không tạo citation
         if not source:
             continue
 
-        citation_key = (
-            source,
-            page,
-            chunk_index
-        )
+        if source not in grouped:
+            grouped[source] = {
+                "source": source,
+                "pages": []
+            }
 
-        if citation_key in seen:
-            continue
+        if page is not None and page not in grouped[source]["pages"]:
+            grouped[source]["pages"].append(page)
 
-        seen.add(citation_key)
+    citations = []
+
+    for source, data in grouped.items():
+        data["pages"].sort()
 
         citations.append({
             "source": source,
-            "page": page,
-            "chunk_index": chunk_index
+            "pages": data["pages"]
         })
 
     return citations
@@ -124,19 +124,23 @@ def format_citations(
     for citation in citations:
 
         source = citation["source"]
-        page = citation.get("page")
-        chunk_index = citation.get("chunk_index")
+        pages = citation.get("pages", [])
 
         # Có source + page
-        if page is not None:
+        if pages:
+            pages = sorted(set(pages))
+
+            if len(pages) == 1:
+                page_text = f"trang {pages[0]}"
+            else:
+                page_text = "trang " + ", ".join(
+                    str(page) for page in pages
+                )
+
             lines.append(
-                f"- {source}, trang {page}"
+                f"- {source}, {page_text}"
             )
-        # Có source + chunk
-        elif chunk_index is not None:
-            lines.append(
-                f"- {source}, chunk {chunk_index}"
-            )
+
         # Chỉ có source
         else:
             lines.append(
@@ -170,6 +174,7 @@ def validate_answer(
             "answer": NO_EVIDENCE_MESSAGE,
             "citations": []
         }
+
     # 2. LLM không trả lời
     if not answer or not answer.strip():
         return {
@@ -177,7 +182,9 @@ def validate_answer(
             "answer": NO_EVIDENCE_MESSAGE,
             "citations": []
         }
+
     answer = answer.strip()
+
     # 3. LLM đã trả câu từ chối
     if answer == NO_EVIDENCE_MESSAGE:
         return {
@@ -185,8 +192,10 @@ def validate_answer(
             "answer": NO_EVIDENCE_MESSAGE,
             "citations": []
         }
+
     # 4. Tạo citation từ metadata thật
     citations = build_citations(chunks)
+
     # Có context nhưng không có nguồn
     if not citations:
         return {
@@ -194,11 +203,13 @@ def validate_answer(
             "answer": NO_EVIDENCE_MESSAGE,
             "citations": []
         }
+
     # 5. Ghép Answer + Citation
     final_answer = (
         answer +
         format_citations(citations)
     )
+
     return {
         "valid": True,
         "answer": final_answer,

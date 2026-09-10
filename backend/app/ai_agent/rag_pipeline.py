@@ -17,10 +17,10 @@ def run_pipeline(
         query
     )
 
-    print(
-        f"[Retrieval] Found "
-        f"{len(retrieved_chunks)} chunks."
-    )
+    # print(
+    #     f"[Retrieval] Found "
+    #     f"{len(retrieved_chunks)} chunks."
+    # )
 
     #  reranking
     reranked_chunks, latency_ms = (
@@ -31,21 +31,21 @@ def run_pipeline(
         )
     )
 
-    print(
-        f"[Reranking] Selected "
-        f"{len(reranked_chunks)} chunks."
-    )
+    # print(
+    #     f"[Reranking] Selected "
+    #     f"{len(reranked_chunks)} chunks."
+    # )
 
-    print(
-        f"[Reranking] Latency: "
-        f"{latency_ms:.2f} ms"
-    )
+    # print(
+    #     f"[Reranking] Latency: "
+    #     f"{latency_ms:.2f} ms"
+    # )
 
-    print("\n[Context sent to LLM]")
-    for i, doc in enumerate(reranked_chunks, start=1):
-        print(f"--- Chunk {i} ---")
-        print(doc.page_content)
-        print("Metadata:", doc.metadata)
+    # print("\n[Context sent to LLM]")
+    # for i, doc in enumerate(reranked_chunks, start=1):
+    #     print(f"--- Chunk {i} ---")
+    #     print(doc.page_content)
+    #     print("Metadata:", doc.metadata)
 
     # generation
     answer = generate_answer(

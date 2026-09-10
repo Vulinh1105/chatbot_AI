@@ -11,7 +11,7 @@ load_dotenv()
 
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-COLLECTION_NAME = "chatbot_documents"
+COLLECTION_NAME = "chatbot_documents_v2"
 
 
 # print("URL:", QDRANT_URL)
@@ -30,14 +30,14 @@ db = QdrantVectorStore.from_existing_collection(
     api_key=QDRANT_API_KEY,
     prefer_grpc=False
 )
-print('connected to QDRANT successfully.')
+# print('connected to QDRANT successfully.')
 
 
-retriever=db.as_retriever(
-    search_type='similarity_score_threshold',
-    search_kwargs={'k': 3, 'score_threshold': 0.2}
+retriever = db.as_retriever(
+    search_type="similarity",
+    search_kwargs={"k": 5}
 )
-print('done topK + score')
+# print('done topK + score')
 
 
 # Hàm Retrieval
@@ -46,25 +46,25 @@ def retrieve(query):
     return results
 
 
-if __name__ == '__main__':
-    while True:
-        query = input('Question (type "exit" to quit): ')
-
-        if query == 'exit':
-            print('program exited.')
-            break
-        if not query.strip():
-            continue
-
-
-        results = retrieve(query)
-
-        print(f'\nFind {len(results)} chunks:\n')
-
-        for i, doc in enumerate(results, start=1):
-            print(f'--- Result {i} ---')
-            print('Content:', doc.page_content)
-            print('Metadata:', doc.metadata)
-
-print('retrieval done')
+# if __name__ == '__main__':
+#     while True:
+#         query = input('Question (type "exit" to quit): ')
+#
+#         if query == 'exit':
+#             print('program exited.')
+#             break
+#         if not query.strip():
+#             continue
+#
+#
+#         results = retrieve(query)
+#
+#         print(f'\nFind {len(results)} chunks:\n')
+#
+#         for i, doc in enumerate(results, start=1):
+#             print(f'--- Result {i} ---')
+#             print('Content:', doc.page_content)
+#             print('Metadata:', doc.metadata)
+#
+# print('retrieval done')
 

@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-
+load_dotenv()
 SYSTEM_PROMPT_TEMPLATE = """Bạn là trợ lý AI tra cứu tài liệu nội bộ của công ty. Nhiệm vụ của bạn là trả lời câu hỏi của nhân viên dựa CHỈ vào ngữ cảnh tài liệu được cung cấp trong thẻ <context> bên dưới.
 
 <context>
@@ -11,9 +11,16 @@ SYSTEM_PROMPT_TEMPLATE = """Bạn là trợ lý AI tra cứu tài liệu nội b
 </context>
 
 Quy tắc nghiêm ngặt:
-1. Chỉ sử dụng thông tin nằm trong thẻ <context> để trả lời. TUYỆT ĐỐI KHÔNG sử dụng kiến thức bên ngoài hoặc tự suy đoán.
-2. Nếu thông tin KHÔNG CÓ trong ngữ cảnh, hãy trả lời CHÍNH XÁC nguyên văn câu sau: "Tài liệu hiện tại không đề cập vấn đề này."
-3. Trả lời ngắn gọn, đi thẳng vào trọng tâm, lịch sự và không nhắc lại các thẻ kỹ thuật như <context> trong câu trả lời.
+1. Chỉ sử dụng thông tin nằm trong thẻ <context> để trả lời.
+2. Tuyệt đối không sử dụng kiến thức bên ngoài hoặc tự suy đoán.
+3. Trước khi trả lời, phải kiểm tra xem <context> có thực sự chứa thông tin để trả lời đúng ý câu hỏi hay không.
+4. Không được trả lời một câu hỏi khác chỉ vì <context> có chứa một vài từ khóa giống với câu hỏi.
+5. Nếu câu hỏi không được tài liệu đề cập hoặc ngữ cảnh không đủ để trả lời đúng câu hỏi, hãy trả lời:
+"Tài liệu hiện tại không đề cập vấn đề này."
+6. Nếu chỉ một phần câu hỏi được tài liệu hỗ trợ, chỉ trả lời phần được hỗ trợ và nói rõ phần còn lại không được đề cập.
+7. Không được tự suy đoán, bổ sung hoặc diễn giải thông tin không có trong tài liệu.
+8. Nếu câu hỏi mơ hồ hoặc không có ý nghĩa rõ ràng trong ngữ cảnh tài liệu, không được tự suy diễn ý định của người dùng. Hãy trả lời:
+"Tài liệu hiện tại không đề cập vấn đề này."
 """
 
 qa_prompt = ChatPromptTemplate.from_messages([
@@ -29,7 +36,6 @@ qa_prompt = ChatPromptTemplate.from_messages([
 #     retrieve = None
 # --> viết vào pipeline
 
-load_dotenv()
 
 def generate_answer(query: str, context_chunks) -> str:
     """
@@ -56,7 +62,18 @@ def generate_answer(query: str, context_chunks) -> str:
     ]
     
     context_text = "\n\n---\n\n".join(formatted_chunks)
-    
+
+
+
+    # test
+    # # Debug context trước khi gửi LLM
+    # print("\n===== CONTEXT SENT TO LLM =====")
+    # print(context_text)
+    # print("================================\n")
+    #
+
+
+
     llm = ChatOpenAI(model="gpt-5.4-nano", temperature=0)
     
     chain = (
@@ -64,12 +81,39 @@ def generate_answer(query: str, context_chunks) -> str:
         | llm
         | StrOutputParser()
     )
-    
+
+
+
+
+
+    # messages = qa_prompt.format_messages(
+    #     context=context_text,
+    #     query=query
+    # )
+
+
+    # test
+    # print("\n===== ACTUAL PROMPT =====")
+    # for message in messages:
+    #     print(f"\n[{message.type}]")
+    #     print(message.content)
+    # print("=========================\n")
+
+
+
     response = chain.invoke({
         "context": context_text,
         "query": query
     })
-    
+
+
+    # test
+    # print("\n===== RAW LLM RESPONSE =====")
+    # print(repr(response))
+    # print("============================\n")
+
+
+
     return response.strip()
 
 #
