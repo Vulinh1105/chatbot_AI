@@ -259,5 +259,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     print(
         "pipeline.py không có document_id demo mặc định. "
-        "Hãy chạy API upload hoặc test_ingestion để xử lý tài liệu thật."
+        "Hãy chạy API upload hoặc test code/test_ingestion.py để xử lý tài liệu thật."
     )
