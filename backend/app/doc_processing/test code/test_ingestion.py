@@ -1,10 +1,10 @@
 """Register test files placed in backend/documents/test and index them.
 
 Usage from the repository root:
-    python -m app.doc_processing.test_ingestion --owner-id 3
+    python "backend/app/doc_processing/test code/test_ingestion.py" --owner-id 3
 
 In Docker:
-    docker compose exec app python -m app.doc_processing.test_ingestion --owner-id 3
+    docker compose exec app python "/app/backend/app/doc_processing/test code/test_ingestion.py" --owner-id 3
 """
 
 from __future__ import annotations

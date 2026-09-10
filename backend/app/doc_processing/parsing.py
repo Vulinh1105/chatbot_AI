@@ -252,5 +252,5 @@ if __name__ == "__main__":
     print(
         "parsing.py không có file demo mặc định. "
         "Hãy gọi parse_document() với đường dẫn file thật, "
-        "hoặc chạy pipeline/test_ingestion để test tài liệu trong storage."
+        "hoặc chạy pipeline/test code/test_ingestion.py để test tài liệu trong storage."
     )

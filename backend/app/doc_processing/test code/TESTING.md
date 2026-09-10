@@ -19,8 +19,8 @@
 3. Chạy test ingestion:
 
    ```
-   docker compose exec app python -m app.doc_processing.test_ingestion --owner-id (replace with number)
-   E.g: docker compose exec app python -m app.doc_processing.test_ingestion --owner-id 3
+   docker compose exec app python "/app/backend/app/doc_processing/test code/test_ingestion.py" --owner-id (replace with number)
+   E.g: docker compose exec app python "/app/backend/app/doc_processing/test code/test_ingestion.py" --owner-id 3
    ```
 
 4. Kiểm tra kết quả trong:
@@ -83,8 +83,8 @@ Pipeline thật được gọi tự động bởi `test_ingestion.py` hoặc API
 Đây là lệnh test đầy đủ cho file trong `backend/documents/test`:
 
 ```powershell
-docker compose exec app python -m app.doc_processing.test_ingestion --owner-id (replace with number)
-E.g: docker compose exec app python -m app.doc_processing.test_ingestion --owner-id 3
+docker compose exec app python "/app/backend/app/doc_processing/test code/test_ingestion.py" --owner-id (replace with number)
+E.g: docker compose exec app python "/app/backend/app/doc_processing/test code/test_ingestion.py" --owner-id 3
 ```
 
 Luồng thực tế:

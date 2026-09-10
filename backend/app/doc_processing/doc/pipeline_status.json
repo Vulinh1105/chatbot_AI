@@ -70,5 +70,14 @@
     "error": null,
     "started_at": "2026-09-10T11:28:17.332190+00:00",
     "finished_at": "2026-09-10T11:28:17.455453+00:00"
+  },
+  "13": {
+    "document_id": 13,
+    "status": "chunked",
+    "chunk_count": 78,
+    "strategy": "fixed_overlap",
+    "error": null,
+    "started_at": "2026-09-10T13:33:11.829389+00:00",
+    "finished_at": "2026-09-10T13:33:11.973233+00:00"
   }
 }

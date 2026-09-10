@@ -219,5 +219,5 @@ if __name__ == "__main__":
     print(
         "ingestion.py không có chế độ chạy độc lập với tài liệu thử nghiệm. "
         "Hãy dùng API upload hoặc chạy: "
-        "python -m app.doc_processing.test_ingestion --owner-id <id>"
+        "python \"backend/app/doc_processing/test code/test_ingestion.py\" --owner-id <id>"
     )
