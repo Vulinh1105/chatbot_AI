@@ -13,4 +13,4 @@ node_modules/
 backend/faiss_index/
 
 # IDE
-.idea/
+.idea/s

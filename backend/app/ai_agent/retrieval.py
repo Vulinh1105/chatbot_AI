@@ -1,24 +1,37 @@
 
 from pathlib import Path
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
+#from langchain_community.vectorstores import FAISS
 from dotenv import load_dotenv
-
+from langchain_qdrant import QdrantVectorStore
+import os
 
 load_dotenv()
 
 
-FAISS_PATH = Path(__file__).resolve().parent.parent.parent / 'faiss_index'
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+COLLECTION_NAME = "chatbot_documents"
+
+
+# print("URL:", QDRANT_URL)
+# print("API KEY exists:", QDRANT_API_KEY is not None)
+
+
 embedder = OpenAIEmbeddings(
     model='text-embedding-3-large'
 )
 
-# lấy phaanf embedding ở T12
-db = FAISS.load_local(
-    FAISS_PATH,
-    embedder,
-    allow_dangerous_deserialization=True
+# Khởi tạo Qdrant vector store từ collection đã tồn tại
+db = QdrantVectorStore.from_existing_collection(
+    embedding=embedder,
+    collection_name=COLLECTION_NAME,
+    url=QDRANT_URL,
+    api_key=QDRANT_API_KEY,
+    prefer_grpc=False
 )
+print('connected to QDRANT successfully.')
+
 
 retriever=db.as_retriever(
     search_type='similarity_score_threshold',
@@ -53,4 +66,5 @@ if __name__ == '__main__':
             print('Content:', doc.page_content)
             print('Metadata:', doc.metadata)
 
-print('số vector trg FAISS: ', db.index.ntotal)
+print('retrieval done')
+

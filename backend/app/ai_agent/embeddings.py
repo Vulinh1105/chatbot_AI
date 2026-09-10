@@ -1,9 +1,10 @@
-from faiss.swigfaiss import DistanceComputer
-from jinja2 import meta
+
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_community.vectorstores.utils import DistanceStrategy
+# from langchain_community.vectorstores import FAISS
+# from langchain_community.vectorstores.utils import DistanceStrategy
 from pathlib import Path
+from langchain_qdrant import QdrantVectorStore
+from qdrant_client import QdrantClient
 import os
 import json
 from langchain_core.documents import Document
@@ -13,7 +14,11 @@ load_dotenv()
 
 # DATA_PATH='../data'
 DATA_PATH = Path(__file__).resolve().parent.parent / 'doc_processing' / 'doc'
-FAISS_PATH = Path(__file__).resolve().parent.parent.parent / 'faiss_index'
+
+# qdrant config
+QDRANT_URL = os.getenv('QDRANT_URL')
+QDRANT_API_KEY = os.getenv('QDRANT_API_KEY')
+COLLECTION_NAME = 'chatbot_documents'
 
 def create_vector_db(docs):
 
@@ -22,16 +27,22 @@ def create_vector_db(docs):
         model='text-embedding-3-large'
     )
 
-    print('Creating embeddings...')
-    db = FAISS.from_documents(docs, embeddings, distance_strategy=DistanceStrategy.COSINE)
-    db.save_local(FAISS_PATH)
-    print('Faiss index created successfully.')
+    print('Creating embeddings')
+    qdrant = QdrantVectorStore.from_documents(
+        documents=docs,
+        embedding=embeddings,
+        url=QDRANT_URL,
+        api_key=QDRANT_API_KEY,
+        collection_name=COLLECTION_NAME,
+    )
 
-    return db
+    print('Qdrant created successfully.')
+
+    return qdrant
 
 if __name__ == '__main__':
     # read json
-    json_path = DATA_PATH / '1_chunking.json'
+    json_path = DATA_PATH / 'chunks.json'
     with open(json_path, 'r', encoding='utf-8') as f:
         chunks = json.load(f)
 
