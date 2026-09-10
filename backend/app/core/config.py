@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 1 day
     admin_username: str = "admin"
-    documents_dir: str = "./documents"
+    documents_dir: str = "./backend/documents"
     max_upload_size_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
 
     @property
