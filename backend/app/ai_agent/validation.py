@@ -1,53 +1,70 @@
 from typing import List, Dict, Any
+
+from langchain_core import documents
+from langchain_core.documents import Document
+
+
 NO_EVIDENCE_MESSAGE = "Tài liệu hiện tại không đề cập vấn đề này."
+
+# check evidence
 def has_evidence(
-    chunks: List[Dict[str, Any]]
+    chunks: List[Document]
 ) -> bool:
     if not chunks:
         return False
     for chunk in chunks:
-        if isinstance(chunk, str):
-            if chunk.strip():
-                return True
-        elif isinstance(chunk, dict):
-            content = (
-                chunk.get("content")
-                or chunk.get("text")
-                or ""
-            )
-            if content and str(content).strip():
+        if isinstance(chunk, Document):
+            if (chunk.page_content and chunk.page_content.strip()):
                 return True
     return False
+
+# get source metadata
 def get_source_metadata(
-    chunk: Dict[str, Any]
+    chunk: Document
 ) -> Dict[str, Any]:
-    metadata = chunk.get(
-        "metadata",
-        {}
-    )
+    """
+    Lấy metadata citation từ Document
+    """
+    if not isinstance(
+        chunk,
+        Document
+    ):
+        return {
+            "source": None,
+            "page": None,
+            "chunk_index": None,
+        }
+
+    metadata = chunk.metadata
+
     if not isinstance(metadata, dict):
         metadata = {}
+
+    # sourse
     source = (
-        chunk.get("source_file")
-        or metadata.get("source")
+        metadata.get("source")
+        or metadata.get("source_file")
         or metadata.get("file_name")
         or metadata.get("filename")
     )
-    chunk_index = (
-        chunk.get("chunk_index")
-        or metadata.get("chunk_index")
-    )
-    page = (
-        metadata.get("page")
-        or metadata.get("page_number")
-    )
+
+    # page
+    page = metadata.get("page")
+    if page is None:
+        page = metadata.get("page_number")
+
+    # chunk_index
+    chunk_index = metadata.get("chunk_index")
     return {
         "source": source,
         "page": page,
-        "chunk_index": chunk_index
+        "chunk_index": chunk_index,
     }
+
+
+
 def build_citations(
-    chunks: List[Dict[str, Any]]
+    chunks: List[Document]
 ) -> List[Dict[str, Any]]:
     """
     Tạo citation từ metadata thật của chunks.
@@ -58,9 +75,6 @@ def build_citations(
     seen = set()
 
     for chunk in chunks:
-
-        if not isinstance(chunk, dict):
-            continue
 
         metadata = get_source_metadata(chunk)
 
@@ -131,9 +145,10 @@ def format_citations(
 
     return "\n".join(lines)
 
+# final
 def validate_answer(
     answer: str,
-    chunks: List[Dict[str, Any]]
+    chunks: List[Document]
 ) -> Dict[str, Any]:
     """
     Validation cuối cùng của T17.
@@ -190,4 +205,4 @@ def validate_answer(
         "citations": citations
     }
 
-print('done')
+# print('validation done')

@@ -86,3 +86,5 @@ class Reranker:
 
         # Trả về Top-K chunk và thời gian rerank.
         return ranked_documents[:top_k], latency_ms
+
+# print('reranking done')

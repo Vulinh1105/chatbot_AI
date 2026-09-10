@@ -17,7 +17,7 @@ DATA_PATH = Path(__file__).resolve().parent.parent / 'doc_processing' / 'doc'
 
 # qdrant config
 QDRANT_URL = os.getenv('QDRANT_URL')
-QDRANT_API_KEY = os.getenv('QDRANT_KEY')
+QDRANT_API_KEY = os.getenv('QDRANT_API_KEY')
 COLLECTION_NAME = 'chatbot_documents'
 
 def create_vector_db(docs):

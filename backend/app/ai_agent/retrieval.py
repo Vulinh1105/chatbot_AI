@@ -22,7 +22,7 @@ embedder = OpenAIEmbeddings(
     model='text-embedding-3-large'
 )
 
-# lấy phaanf embedding ở T12
+# Khởi tạo Qdrant vector store từ collection đã tồn tại
 db = QdrantVectorStore.from_existing_collection(
     embedding=embedder,
     collection_name=COLLECTION_NAME,
@@ -66,4 +66,5 @@ if __name__ == '__main__':
             print('Content:', doc.page_content)
             print('Metadata:', doc.metadata)
 
+print('retrieval done')
 
