@@ -1,6 +1,6 @@
-// src/components/ChatFeedbackButtons.tsx
 import { useState } from "react";
 import { useFeedbackStore } from "../stores/feedbackStore";
+import "./ChatFeedbackButtons.css";
 
 const DOWN_REASONS = [
   "Thông tin không chính xác",
@@ -44,23 +44,17 @@ export default function ChatFeedbackButtons({
   }
 
   return (
-    <div className="mt-2">
-      <div className="flex items-center gap-2">
+    <div className="chat-feedback">
+      <div className="chat-feedback-buttons">
         <button
           type="button"
           disabled={alreadyRated || submitting}
           onClick={() => handleRate("up")}
           aria-pressed={rating === "up"}
           aria-label="Đánh giá hữu ích"
-          className={[
-            "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors",
-            "disabled:cursor-default",
-            rating === "up"
-              ? "border-blue-200 bg-blue-50 text-blue-600"
-              : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50",
-          ].join(" ")}
+          className={`chat-feedback-btn${rating === "up" ? " is-up-active" : ""}`}
         >
-          <ThumbUpIcon className="h-3.5 w-3.5" />
+          <ThumbUpIcon />
           Hữu ích
         </button>
 
@@ -70,28 +64,22 @@ export default function ChatFeedbackButtons({
           onClick={() => setShowReasons(true)}
           aria-pressed={rating === "down"}
           aria-label="Đánh giá chưa hữu ích"
-          className={[
-            "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors",
-            "disabled:cursor-default",
-            rating === "down"
-              ? "border-red-200 bg-red-50 text-red-600"
-              : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50",
-          ].join(" ")}
+          className={`chat-feedback-btn${rating === "down" ? " is-down-active" : ""}`}
         >
-          <ThumbDownIcon className="h-3.5 w-3.5" />
+          <ThumbDownIcon />
           Chưa hữu ích
         </button>
       </div>
 
       {showReasons && !alreadyRated && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="chat-feedback-reasons">
           {DOWN_REASONS.map((reason) => (
             <button
               key={reason}
               type="button"
               disabled={submitting}
               onClick={() => handleRate("down", reason)}
-              className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
+              className="chat-feedback-reason-btn"
             >
               {reason}
             </button>
@@ -100,25 +88,25 @@ export default function ChatFeedbackButtons({
       )}
 
       {rating && !showReasons && (
-        <p className="mt-1.5 text-xs text-gray-400">Đã ghi nhận phản hồi, cảm ơn bạn</p>
+        <p className="chat-feedback-thanks">Đã ghi nhận phản hồi, cảm ơn bạn</p>
       )}
 
-      {error && <p className="mt-1.5 text-xs text-red-500">{error}</p>}
+      {error && <p className="chat-feedback-error">{error}</p>}
     </div>
   );
 }
 
-function ThumbUpIcon({ className }: { className?: string }) {
+function ThumbUpIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
       <path d="M7 10v11M2 13v6a2 2 0 002 2h13.4a2 2 0 002-1.7l1.4-9a2 2 0 00-2-2.3H14V4a2 2 0 00-2-2c-.6 0-1.1.3-1.4.8L7 10H2z" />
     </svg>
   );
 }
 
-function ThumbDownIcon({ className }: { className?: string }) {
+function ThumbDownIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
       <path d="M17 14V3M22 11V5a2 2 0 00-2-2H6.6a2 2 0 00-2 1.7l-1.4 9a2 2 0 002 2.3H10v4a2 2 0 002 2c.6 0 1.1-.3 1.4-.8L17 14h5z" />
     </svg>
   );
