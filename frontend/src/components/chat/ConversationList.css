@@ -1,0 +1,22 @@
+.conversation-panel { min-width: 0; margin-top: 24px; }
+.conversation-panel h2 { margin: 20px 0 8px; font-size: 14px; color: #6b7280; }
+.conversation-new { width: 100%; padding: 10px; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; color: #2563eb; text-align: left; }
+.conversation-list { display: flex; flex-direction: column; gap: 10px; list-style: none; padding: 2px; margin: 0; max-height: 55dvh; overflow-y: auto; }
+.conversation-row { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; min-width: 0; min-height: 48px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+.conversation-row.active { border-color: #bfdbfe; background: #eff6ff; }
+.conversation-row .conversation-item { flex: 1; min-width: 0; width: auto; line-height: 1.5; }
+.conversation-delete { display: inline-flex; flex: 0 0 36px; align-items: center; justify-content: center; height: 40px; margin-right: 4px; border: 0; border-radius: 6px; color: #6b7280; background: transparent; }
+.conversation-delete:hover { color: #b91c1c; background: #fef2f2; }
+.conversation-item { display: block; width: 100%; padding: 12px; border: 0; border-radius: 8px; background: transparent; color: #4b5563; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.conversation-item:hover { background: #f3f4f6; }
+.conversation-item.active { background: #eff6ff; color: #2563eb; font-weight: 600; }
+.conversation-panel button:focus-visible, .conversation-mobile summary:focus-visible { outline: 2px solid #2563eb; outline-offset: -2px; }
+.conversation-mobile { display: none; }
+.conversation-delete { flex-basis: 44px; height: 44px; }
+.conversation-list { overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+@media (max-width: 768px) {
+  .conversation-desktop { display: none; }
+  .conversation-mobile { display: block; border: 1px solid #e5e7eb; border-radius: 8px; background: white; padding: 12px; }
+  .conversation-mobile summary { cursor: pointer; color: #2563eb; }
+  .conversation-mobile .conversation-panel { margin-top: 12px; }
+}

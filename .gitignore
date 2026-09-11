@@ -1,16 +1,28 @@
 # Python
-.venv/
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
 
-# Environment
+# Virtual environment
+.venv/
+venv/
+
+# Environment files
 .env
+
+# Backend local database
+*.db
 
 # Frontend
 node_modules/
+dist/
 
 # Generated data
 backend/faiss_index/
 
 # IDE
-.idea/s
+.idea/
+.vscode/
+
+# Uploaded documents
+backend/documents/
