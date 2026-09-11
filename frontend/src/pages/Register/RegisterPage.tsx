@@ -1,18 +1,12 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-
-interface RegisteredUser {
-  id: string;
-  name: string;
-  email: string;
-  password: string;
-}
+import { register } from "../../services/authService";
 
 function RegisterPage() {
   const navigate = useNavigate();
 
-  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -27,13 +21,18 @@ function RegisterPage() {
     setError("");
     setSuccess("");
 
-    if (!name.trim() || !email.trim() || !password || !confirmPassword) {
+    if (
+      !username.trim() ||
+      !email.trim() ||
+      !password ||
+      !confirmPassword
+    ) {
       setError("Vui lòng nhập đầy đủ thông tin.");
       return;
     }
 
-    if (password.length < 6) {
-      setError("Mật khẩu phải có ít nhất 6 ký tự.");
+    if (password.length < 8) {
+      setError("Mật khẩu phải có ít nhất 8 ký tự.");
       return;
     }
 
@@ -45,32 +44,11 @@ function RegisterPage() {
     setLoading(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 700));
-
-      const registeredUsers: RegisteredUser[] = JSON.parse(
-        localStorage.getItem("registeredUsers") || "[]"
-      );
-
-      const existingUser = registeredUsers.find(
-        (user) => user.email.toLowerCase() === email.trim().toLowerCase()
-      );
-
-      if (existingUser) {
-        setError("Email này đã được đăng ký.");
-        return;
-      }
-
-      const newUser: RegisteredUser = {
-        id: crypto.randomUUID(),
-        name: name.trim(),
+      await register({
+        username: username.trim(),
         email: email.trim(),
         password,
-      };
-
-      localStorage.setItem(
-        "registeredUsers",
-        JSON.stringify([...registeredUsers, newUser])
-      );
+      });
 
       setSuccess(
         "Đăng ký thành công! Đang chuyển đến trang đăng nhập..."
@@ -79,8 +57,12 @@ function RegisterPage() {
       setTimeout(() => {
         navigate("/login", { replace: true });
       }, 800);
-    } catch {
-      setError("Đã xảy ra lỗi. Vui lòng thử lại.");
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.detail ||
+        "Đăng ký thất bại. Vui lòng thử lại.";
+
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -99,16 +81,17 @@ function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="name">Họ và tên</label>
+            <label htmlFor="username">Tên đăng nhập</label>
 
             <input
-              id="name"
+              id="username"
               type="text"
-              placeholder="Nhập họ và tên"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
+              placeholder="Nhập tên đăng nhập"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
               disabled={loading}
             />
+
           </div>
 
           <div className="form-group">

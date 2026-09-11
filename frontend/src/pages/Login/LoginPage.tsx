@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
+import { login as loginApi } from "../../services/authService";
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -18,8 +19,7 @@ function LoginPage() {
 
     setError("");
 
-    // Kiểm tra bỏ trống
-    if (!email || !password) {
+    if (!email.trim() || !password) {
       setError("Vui lòng nhập đầy đủ email và mật khẩu.");
       return;
     }
@@ -27,44 +27,27 @@ function LoginPage() {
     setLoading(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 700));
+      const response = await loginApi({
+        username: email.trim(),
+        password,
+      });
 
-      const registeredUsers = JSON.parse(
-        localStorage.getItem("registeredUsers") || "[]"
+      login(
+        {
+          id: "",
+          email: email.trim(),
+          name: email.trim(),
+        },
+        response.access_token
       );
-
-      const registeredUser = registeredUsers.find(
-        (user: { email: string; password: string }) =>
-          user.email.toLowerCase() === email.trim().toLowerCase() &&
-          user.password === password
-      );
-
-      const isDemoAccount =
-        email.trim().toLowerCase() === "demo@docbot.local" &&
-        password === "123456";
-
-      if (!registeredUser && !isDemoAccount) {
-        setError("Email hoặc mật khẩu không đúng.");
-        return;
-      }
-
-      const user = registeredUser
-        ? {
-            id: registeredUser.id,
-            email: registeredUser.email,
-            name: registeredUser.name,
-          }
-        : {
-            id: "demo-user",
-            email: "demo@docbot.local",
-            name: "Demo User",
-          };
-
-      login(user, "mock-access-token");
 
       navigate("/chat", { replace: true });
-    } catch {
-      setError("Đã xảy ra lỗi. Vui lòng thử lại.");
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.detail ||
+        "Email hoặc mật khẩu không đúng.";
+
+      setError(message);
     } finally {
       setLoading(false);
     }
