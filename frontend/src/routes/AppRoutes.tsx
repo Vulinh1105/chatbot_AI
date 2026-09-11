@@ -4,6 +4,7 @@ import AppLayout from "../layouts/AppLayout";
 import ChatPage from "../pages/Chat/ChatPage";
 import DocumentManagementPage from "../pages/Documents/DocumentManagementPage";
 import LoginPage from "../pages/Login/LoginPage";
+import RegisterPage from "../pages/Register/RegisterPage";
 import NotFoundPage from "../pages/NotFound/NotFoundPage";
 import ProtectedRoute from "../components/common/ProtectedRoute";
 
@@ -12,6 +13,7 @@ function AppRoutes() {
     <Routes>
       {/* Trang đăng nhập */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
 
       {/* Các trang yêu cầu đăng nhập */}
       <Route element={<ProtectedRoute />}>

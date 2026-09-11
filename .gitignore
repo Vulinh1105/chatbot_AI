@@ -7,12 +7,22 @@ __pycache__/
 .venv/
 venv/
 
-# Backend local database
-backend/thinkdocu.db
-
 # Environment files
 .env
+
+# Backend local database
+*.db
 
 # Frontend
 node_modules/
 dist/
+
+# Generated data
+backend/faiss_index/
+
+# IDE
+.idea/
+.vscode/
+
+# Uploaded documents
+backend/documents/

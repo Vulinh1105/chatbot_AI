@@ -1,0 +1,70 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: thinkdocu_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-thinkdocu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thinkdocu_password}
+      POSTGRES_DB: ${POSTGRES_DB:-thinkdocu_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: thinkdocu_qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    restart: always
+
+  app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: thinkdocu_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    environment:
+      API_V1_STR: ${API_V1_STR:-/api/v1}
+      PROJECT_NAME: ${PROJECT_NAME:-ThinkDocu}
+      SECRET_KEY: ${SECRET_KEY:-thay-bang-mot-chuoi-ngau-nhien-dai-va-bao-mat}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 1440
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://${POSTGRES_USER:-thinkdocu}:${POSTGRES_PASSWORD:-thinkdocu_password}@db:5432/${POSTGRES_DB:-thinkdocu_db}
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - ./backend/documents:/app/backend/documents
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: thinkdocu_frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - app
+
+volumes:
+  postgres_data:
+  qdrant_storage:
