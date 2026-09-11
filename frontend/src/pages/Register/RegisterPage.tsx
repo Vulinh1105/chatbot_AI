@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { register } from "../../services/authService";
+import axios from "axios";
 
 function RegisterPage() {
   const navigate = useNavigate();
@@ -57,13 +58,15 @@ function RegisterPage() {
       setTimeout(() => {
         navigate("/login", { replace: true });
       }, 800);
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.detail ||
-        "Đăng ký thất bại. Vui lòng thử lại.";
+    } catch (error) {
+      const message = axios.isAxiosError(error)
+        ? error.response?.data?.detail ||
+          "Đăng ký thất bại. Vui lòng thử lại."
+        : "Đăng ký thất bại. Vui lòng thử lại.";
 
       setError(message);
-    } finally {
+    }
+     finally {
       setLoading(false);
     }
   };

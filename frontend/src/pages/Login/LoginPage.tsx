@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { login as loginApi } from "../../services/authService";
+import axios from "axios";
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -42,10 +43,10 @@ function LoginPage() {
       );
 
       navigate("/chat", { replace: true });
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.detail ||
-        "Email hoặc mật khẩu không đúng.";
+    } catch (error) {
+      const message = axios.isAxiosError(error)
+        ? error.response?.data?.detail || "Email hoặc mật khẩu không đúng."
+        : "Email hoặc mật khẩu không đúng.";
 
       setError(message);
     } finally {
