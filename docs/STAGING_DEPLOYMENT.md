@@ -1,0 +1,23 @@
+# TÀI LIỆU VẬN HÀNH MÔI TRƯỜNG STAGING
+
+## 1. Thông số Hệ thống & Port
+- Server IP: 188.245.107.192
+- Web Frontend: Port 3001 (http://188.245.107.192:3001)
+- Backend API: Port 8000 (http://188.245.107.192:8000/docs)
+- Qdrant Dashboard: Port 6333 (http://188.245.107.192:6333/dashboard)
+- Database (PostgreSQL): Port 5432 (DB: thinkdocu_db, User: thinkdocu, Pass: thinkdocu_password)
+
+## 2. Quy trình Triển khai (Deployment)
+- Tự động (CD Pipeline): Merge PR vào nhánh `main`, GitHub Actions tự động kích hoạt cập nhật.
+- Thủ công (Cold Start):  
+  1. SSH vào server: ssh root@188.245.107.192  
+  2. Cấu hình biến môi trường: cp .env.example .env.staging  
+  3. Khởi chạy: docker compose --env-file .env.staging up -d --build
+
+## 3. Kiểm tra Sức khỏe (Health Check)
+- Trạng thái container: docker ps
+- Probe Backend: curl -i http://localhost:8000/health
+
+## 4. Xử lý sự cố (Troubleshooting)
+- Xem log: docker compose logs -f --tail=100 thinkdocu_be
+- Khởi động lại service: docker compose restart thinkdocu_be
