@@ -1,46 +1,76 @@
+version: '3.8'
+
 services:
-  db:
+  thinkdocu_db:
     image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-thinkdocu}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thinkdocu_password}
-      POSTGRES_DB: ${POSTGRES_DB:-thinkdocu_db}
+    container_name: thinkdocu_db
+    restart: always
+    env_file:
+      - .env.staging
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "0.0.0.0:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -U thinkdocu -d thinkdocu_db"]
       interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 5s
+      retries: 5
+      start_period: 10s
 
-  app:
-    build:
-      context: .
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      API_V1_STR: ${API_V1_STR:-/api/v1}
-      PROJECT_NAME: ${PROJECT_NAME:-ThinkDocu}
-      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env before starting Docker Compose}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://${POSTGRES_USER:-thinkdocu}:${POSTGRES_PASSWORD:-thinkdocu_password}@db:5432/${POSTGRES_DB:-thinkdocu_db}
+  thinkdocu_qdrant:
+    image: qdrant/qdrant:latest
+    container_name: thinkdocu_qdrant
+    restart: always
     ports:
-      - "${APP_PORT:-8000}:8000"
+      - "0.0.0.0:6333:6333"
+      - "0.0.0.0:6334:6334"
     volumes:
-      - ./backend/documents:/app/backend/documents
-      - ./backend/app/doc_processing/doc:/app/backend/app/doc_processing/doc
+      - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8000/db-check').read()"]
-      interval: 10s
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/readyz || exit 1"]
+      interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
+
+  thinkdocu_be:
+    build:
+      context: ./be/backend
+    container_name: thinkdocu_be
+    restart: always
+    env_file:
+      - .env.staging
+    ports:
+      - "0.0.0.0:8000:8000"
+    depends_on:
+      thinkdocu_db:
+        condition: service_healthy
+      thinkdocu_qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
       start_period: 15s
+
+  thinkdocu_fe:
+    image: chatbot_ai-frontend
+    container_name: thinkdocu_fe
+    restart: always
+    ports:
+      - "0.0.0.0:3001:80"
+    depends_on:
+      thinkdocu_be:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || curl -f http://localhost:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
 volumes:
   postgres_data:
+  qdrant_data:
