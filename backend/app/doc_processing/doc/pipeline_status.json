@@ -1,0 +1,83 @@
+{
+  "1": {
+    "document_id": 1,
+    "status": "failed",
+    "chunk_count": 0,
+    "strategy": "fixed_overlap",
+    "error": "Không tìm thấy tài liệu với document_id=1 trong DB.",
+    "started_at": "2026-09-10T11:16:28.346676+00:00",
+    "finished_at": "2026-09-10T11:16:28.370756+00:00"
+  },
+  "6": {
+    "document_id": 6,
+    "status": "chunked",
+    "chunk_count": 20,
+    "strategy": "fixed_overlap",
+    "error": null,
+    "started_at": "2026-09-10T10:36:32.284945+00:00",
+    "finished_at": "2026-09-10T10:36:32.376111+00:00"
+  },
+  "7": {
+    "document_id": 7,
+    "status": "chunked",
+    "chunk_count": 2,
+    "strategy": "fixed_overlap",
+    "error": null,
+    "started_at": "2026-09-10T10:43:15.660380+00:00",
+    "finished_at": "2026-09-10T10:43:15.817908+00:00"
+  },
+  "8": {
+    "document_id": 8,
+    "status": "chunked",
+    "chunk_count": 1,
+    "strategy": "fixed_overlap",
+    "error": null,
+    "started_at": "2026-09-10T10:45:23.359526+00:00",
+    "finished_at": "2026-09-10T10:45:23.573729+00:00"
+  },
+  "9": {
+    "document_id": 9,
+    "status": "failed",
+    "chunk_count": 0,
+    "strategy": "fixed_overlap",
+    "error": "Document id=9 ('QĐ cử Ms Hương đi công tác.pdf') được parse thành công nhưng không có nội dung text nào (có thể là PDF scan/ảnh chưa OCR, hoặc file trống).",
+    "started_at": "2026-09-10T11:05:47.034587+00:00",
+    "finished_at": "2026-09-10T11:05:47.153235+00:00"
+  },
+  "10": {
+    "document_id": 10,
+    "status": "chunked",
+    "chunk_count": 2,
+    "strategy": "fixed_overlap",
+    "error": null,
+    "started_at": "2026-09-10T11:06:33.026529+00:00",
+    "finished_at": "2026-09-10T11:06:33.087880+00:00"
+  },
+  "11": {
+    "document_id": 11,
+    "status": "chunked",
+    "chunk_count": 4,
+    "strategy": "fixed_overlap",
+    "error": null,
+    "started_at": "2026-09-10T11:11:50.464089+00:00",
+    "finished_at": "2026-09-10T11:11:50.536904+00:00"
+  },
+  "12": {
+    "document_id": 12,
+    "status": "chunked",
+    "chunk_count": 10,
+    "strategy": "fixed_overlap",
+    "error": null,
+    "started_at": "2026-09-10T11:28:17.332190+00:00",
+    "finished_at": "2026-09-10T11:28:17.455453+00:00"
+  },
+  "13": {
+    "document_id": 13,
+    "status": "chunked",
+    "chunk_count": 78,
+    "strategy": "fixed_overlap",
+    "error": null,
+    "started_at": "2026-09-10T13:33:11.829389+00:00",
+    "finished_at": "2026-09-10T13:33:11.973233+00:00"
+  }
+}
