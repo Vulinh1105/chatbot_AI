@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 
 function LoginPage() {
@@ -27,29 +27,41 @@ function LoginPage() {
     setLoading(true);
 
     try {
-      // Giả lập gọi API
       await new Promise((resolve) => setTimeout(resolve, 700));
 
-      // Tài khoản demo
-      const isValid =
-        email === "demo@docbot.local" && password === "123456";
+      const registeredUsers = JSON.parse(
+        localStorage.getItem("registeredUsers") || "[]"
+      );
 
-      if (!isValid) {
+      const registeredUser = registeredUsers.find(
+        (user: { email: string; password: string }) =>
+          user.email.toLowerCase() === email.trim().toLowerCase() &&
+          user.password === password
+      );
+
+      const isDemoAccount =
+        email.trim().toLowerCase() === "demo@docbot.local" &&
+        password === "123456";
+
+      if (!registeredUser && !isDemoAccount) {
         setError("Email hoặc mật khẩu không đúng.");
         return;
       }
 
-      // Đăng nhập thông qua authStore
-      login(
-        {
-          id: "demo-user",
-          email: email,
-          name: "Demo User",
-        },
-        "mock-access-token"
-      );
+      const user = registeredUser
+        ? {
+            id: registeredUser.id,
+            email: registeredUser.email,
+            name: registeredUser.name,
+          }
+        : {
+            id: "demo-user",
+            email: "demo@docbot.local",
+            name: "Demo User",
+          };
 
-      // Đăng nhập thành công → chuyển sang Chat
+      login(user, "mock-access-token");
+
       navigate("/chat", { replace: true });
     } catch {
       setError("Đã xảy ra lỗi. Vui lòng thử lại.");
@@ -110,6 +122,11 @@ function LoginPage() {
             {loading ? "Đang đăng nhập..." : "Đăng nhập"}
           </button>
         </form>
+
+        <div className="register-login-link">
+          Chưa có tài khoản?{" "}
+          <Link to="/register">Đăng ký</Link>
+        </div>
       </div>
     </div>
   );
