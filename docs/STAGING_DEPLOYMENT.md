@@ -18,6 +18,6 @@
 - Trạng thái container: docker ps
 - Probe Backend: curl -i http://localhost:8000/health
 
-## 4. Xử lý sự cố (Troubleshooting)
+## 4. Xử lí sự cố (Troubleshooting)
 - Xem log: docker compose logs -f --tail=100 thinkdocu_be
 - Khởi động lại service: docker compose restart thinkdocu_be
