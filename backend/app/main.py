@@ -68,25 +68,3 @@ async def db_check(db: AsyncSession = Depends(get_db)):
             detail=f"Database connection failed: {str(e)}",
         )
 
-import os
-from fastapi.responses import JSONResponse
-from qdrant_client import QdrantClient
-
-@app.get("/health")
-async def health_check():
-    health_status = {"status": "ok", "postgres": "ok", "qdrant": "ok"}
-
-    # Kiểm tra kết nối Qdrant
-    try:
-        qdrant_host = os.getenv("QDRANT_HOST", "thinkdocu_qdrant")
-        qdrant_port = int(os.getenv("QDRANT_PORT", 6333))
-        client = QdrantClient(host=qdrant_host, port=qdrant_port, timeout=2.0)
-        client.get_collections()
-    except Exception:
-        health_status["qdrant"] = "unhealthy"
-
-    is_ready = all(v == "ok" for v in health_status.values())
-    return JSONResponse(
-        content=health_status,
-        status_code=200 if is_ready else 503
-    )

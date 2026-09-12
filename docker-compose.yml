@@ -42,9 +42,7 @@ services:
     environment:
       API_V1_STR: ${API_V1_STR:-/api/v1}
       PROJECT_NAME: ${PROJECT_NAME:-ThinkDocu}
-      SECRET_KEY: ${SECRET_KEY:-thay-bang-mot-chuoi-ngau-nhien-dai-va-bao-mat}
-      ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 1440
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env before starting Docker Compose}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://${POSTGRES_USER:-thinkdocu}:${POSTGRES_PASSWORD:-thinkdocu_password}@db:5432/${POSTGRES_DB:-thinkdocu_db}
       QDRANT_HOST: qdrant
@@ -53,6 +51,12 @@ services:
       - "${APP_PORT:-8000}:8000"
     volumes:
       - ./backend/documents:/app/backend/documents
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8000/db-check').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   frontend:
     build:
