@@ -12,6 +12,7 @@ from app.api.v1.endpoints.document import router as document_router
 from app.core.config import settings
 from app.database import Base, engine, get_db
 from app.model.chat import Chat  # noqa: F401 - registers the model metadata
+from app.model.chat_message import ChatMessage  # noqa: F401 - registers the model metadata
 
 
 @asynccontextmanager
