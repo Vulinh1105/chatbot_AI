@@ -51,6 +51,7 @@ services:
       - "${APP_PORT:-8000}:8000"
     volumes:
       - ./backend/documents:/app/backend/documents
+      - ./backend/app/doc_processing/doc:/app/backend/app/doc_processing/doc
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8000/db-check').read()"]
       interval: 10s
