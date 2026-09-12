@@ -45,3 +45,21 @@ class ChatRepository:
     async def delete(self, chat: Chat) -> None:
         await self.db.delete(chat)
         await self.db.commit()
+    async def get_paginated(
+        self,
+        owner_id: int | None = None,
+        limit: int = 20,
+        cursor: int | None = None,
+    ) -> Sequence[Chat]:
+        stmt = select(Chat)
+
+        if owner_id is not None:
+            stmt = stmt.where(Chat.owner_id == owner_id)
+
+        if cursor is not None:
+            stmt = stmt.where(Chat.id < cursor)
+
+        stmt = stmt.order_by(Chat.updated_at.desc(), Chat.id.desc()).limit(limit)
+
+        result = await self.db.execute(stmt)
+        return result.scalars().all()

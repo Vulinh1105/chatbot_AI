@@ -40,3 +40,7 @@ class ChatMessageResponse(BaseModel):
     sources: list[ChatMessageSource] = Field(default_factory=list)
     status: ChatMessageStatus
     created_at: datetime
+class ChatListResponse(BaseModel):
+    items: list[ChatResponse]
+    next_cursor: int | None = None
+    has_more: bool

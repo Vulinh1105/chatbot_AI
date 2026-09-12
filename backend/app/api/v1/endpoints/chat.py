@@ -1,11 +1,11 @@
-from typing import Annotated, Sequence
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.api.deps import get_chat_service, get_current_user
 from app.model.chat import Chat
 from app.model.user import User
-from app.schemas.chat import ChatCreate, ChatResponse, ChatUpdate
+from app.schemas.chat import ChatCreate, ChatListResponse, ChatResponse, ChatUpdate
 from app.services.chat_service import ChatService
 
 router = APIRouter()
@@ -27,14 +27,20 @@ async def create_chat(
 
 @router.get(
     "/",
-    response_model=list[ChatResponse],
-    summary="List chats available to the current user",
+    response_model=ChatListResponse,
+    summary="List chats available to the current user with pagination",
 )
 async def read_chats(
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
-) -> Sequence[Chat]:
-    return await chat_service.get_chats(current_user)
+    limit: int = Query(20, ge=1, le=100, description="Số lượng chat cần lấy"),
+    cursor: Optional[int] = Query(None, description="Cursor là id của chat cuối cùng ở trang trước"),
+) -> ChatListResponse:
+    return await chat_service.get_chats(
+        user=current_user,
+        limit=limit,
+        cursor=cursor,
+    )
 
 
 @router.get("/{chat_id}", response_model=ChatResponse, summary="Get a chat")
