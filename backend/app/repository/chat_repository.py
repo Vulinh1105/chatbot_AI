@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.model.chat import Chat
+from app.model.chat_message import ChatMessage
 from app.schemas.chat import ChatCreate, ChatUpdate
 
 
@@ -60,6 +61,22 @@ class ChatRepository:
             stmt = stmt.where(Chat.id < cursor)
 
         stmt = stmt.order_by(Chat.updated_at.desc(), Chat.id.desc()).limit(limit)
+
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_messages_paginated(
+        self,
+        chat_id: int,
+        limit: int = 20,
+        cursor: int | None = None,
+    ) -> Sequence[ChatMessage]:
+        stmt = select(ChatMessage).where(ChatMessage.chat_id == chat_id)
+
+        if cursor is not None:
+            stmt = stmt.where(ChatMessage.id > cursor)
+
+        stmt = stmt.order_by(ChatMessage.id.asc()).limit(limit)
 
         result = await self.db.execute(stmt)
         return result.scalars().all()

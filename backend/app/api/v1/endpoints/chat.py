@@ -5,7 +5,13 @@ from fastapi import APIRouter, Depends, Query, status
 from app.api.deps import get_chat_service, get_current_user
 from app.model.chat import Chat
 from app.model.user import User
-from app.schemas.chat import ChatCreate, ChatListResponse, ChatResponse, ChatUpdate
+from app.schemas.chat import (
+    ChatCreate,
+    ChatHistoryResponse,
+    ChatListResponse,
+    ChatResponse,
+    ChatUpdate,
+)
 from app.services.chat_service import ChatService
 
 router = APIRouter()
@@ -38,6 +44,28 @@ async def read_chats(
 ) -> ChatListResponse:
     return await chat_service.get_chats(
         user=current_user,
+        limit=limit,
+        cursor=cursor,
+    )
+
+
+@router.get(
+    "/{chat_id}/messages",
+    response_model=ChatHistoryResponse,
+    summary="Get chat history",
+)
+async def read_chat_history(
+    chat_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    chat_service: Annotated[ChatService, Depends(get_chat_service)],
+    limit: int = Query(20, ge=1, le=100, description="Số lượng tin nhắn cần lấy"),
+    cursor: Optional[int] = Query(
+        None, ge=1, description="ID tin nhắn cuối cùng ở trang trước"
+    ),
+) -> ChatHistoryResponse:
+    return await chat_service.get_chat_history(
+        chat_id=chat_id,
+        current_user=current_user,
         limit=limit,
         cursor=cursor,
     )

@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 from typing import AsyncGenerator
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.chat import router as chat_router
 from app.api.v1.endpoints.user import router as user_router
-from app.api.v1.endpoints.document import router as document_router
 from app.core.config import settings
 from app.database import Base, engine, get_db
 from app.model.chat import Chat  # noqa: F401 - registers the model metadata
@@ -45,7 +45,14 @@ app.add_middleware(
 app.include_router(auth_router, prefix=f"{settings.api_v1_str}/auth", tags=["Auth"])
 app.include_router(user_router, prefix=f"{settings.api_v1_str}/users", tags=["Users"])
 app.include_router(chat_router, prefix=f"{settings.api_v1_str}/chats", tags=["Chats"])
-app.include_router(document_router, prefix=f"{settings.api_v1_str}/documents", tags=["Documents"])
+if os.getenv("ENABLE_DOCUMENTS", "1").lower() in {"1", "true", "yes"}:
+    from app.api.v1.endpoints.document import router as document_router
+
+    app.include_router(
+        document_router,
+        prefix=f"{settings.api_v1_str}/documents",
+        tags=["Documents"],
+    )
 
 
 @app.get("/", tags=["General"])

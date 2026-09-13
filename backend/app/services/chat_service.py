@@ -6,7 +6,14 @@ from app.core.authorization import is_admin_user
 from app.model.chat import Chat
 from app.model.user import User
 from app.repository.chat_repository import ChatRepository
-from app.schemas.chat import ChatCreate, ChatListResponse, ChatResponse, ChatUpdate
+from app.schemas.chat import (
+    ChatCreate,
+    ChatHistoryResponse,
+    ChatListResponse,
+    ChatMessageResponse,
+    ChatResponse,
+    ChatUpdate,
+)
 
 
 class ChatService:
@@ -41,6 +48,33 @@ class ChatService:
     async def get_chat(self, chat_id: int, current_user: User) -> Chat:
         chat = await self._get_owned_or_admin_chat(chat_id, current_user)
         return chat
+
+    async def get_chat_history(
+        self,
+        chat_id: int,
+        current_user: User,
+        limit: int = 20,
+        cursor: Optional[int] = None,
+    ) -> ChatHistoryResponse:
+        chat = await self._get_owned_or_admin_chat(chat_id, current_user)
+        raw_messages = await self.chat_repo.get_messages_paginated(
+            chat_id=chat.id,
+            limit=limit + 1,
+            cursor=cursor,
+        )
+
+        has_more = len(raw_messages) > limit
+        messages = list(raw_messages[:limit])
+        next_cursor = messages[-1].id if has_more and messages else None
+
+        return ChatHistoryResponse(
+            chat=ChatResponse.model_validate(chat),
+            messages=[
+                ChatMessageResponse.model_validate(message) for message in messages
+            ],
+            next_cursor=next_cursor,
+            has_more=has_more,
+        )
 
     async def create_chat(self, chat_in: ChatCreate, current_user: User) -> Chat:
         return await self.chat_repo.create(owner_id=current_user.id, chat_in=chat_in)

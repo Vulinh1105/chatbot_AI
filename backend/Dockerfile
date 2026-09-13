@@ -6,9 +6,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+ARG REQUIREMENTS_FILE=requirements.backend-api.txt
+COPY ${REQUIREMENTS_FILE} ./requirements.txt
+ARG PIP_INDEX_URL=https://pypi.org/simple
+RUN pip install --no-cache-dir --index-url "$PIP_INDEX_URL" -r requirements.txt
+
+ARG ENABLE_DOCUMENTS=0
+ENV ENABLE_DOCUMENTS=$ENABLE_DOCUMENTS
 
 RUN addgroup --system app && adduser --system --ingroup app app
 
