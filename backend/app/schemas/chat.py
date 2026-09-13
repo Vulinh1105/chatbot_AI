@@ -13,6 +13,23 @@ class ChatUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
 
 
+class ChatCitation(BaseModel):
+    source: str | None = None
+    pages: list[int] = Field(default_factory=list)
+
+
+class ChatAskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=5000)
+
+
+class ChatAskResponse(BaseModel):
+    chat_id: int
+    question: str
+    answer: str
+    valid: bool
+    citations: list[ChatCitation] = Field(default_factory=list)
+
+
 class ChatResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

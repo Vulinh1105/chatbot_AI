@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 from typing import Optional, Sequence
+=======
+from typing import Any, Sequence
+>>>>>>> 8ec8fc3 (task 4)
 
 from fastapi import HTTPException, status
 
@@ -7,11 +11,17 @@ from app.model.chat import Chat
 from app.model.user import User
 from app.repository.chat_repository import ChatRepository
 from app.schemas.chat import (
+<<<<<<< HEAD
     ChatCreate,
     ChatHistoryResponse,
     ChatListResponse,
     ChatMessageResponse,
     ChatResponse,
+=======
+    ChatAskRequest,
+    ChatAskResponse,
+    ChatCreate,
+>>>>>>> 8ec8fc3 (task 4)
     ChatUpdate,
 )
 
@@ -88,6 +98,54 @@ class ChatService:
     async def delete_chat(self, chat_id: int, current_user: User) -> None:
         chat = await self._get_owned_or_admin_chat(chat_id, current_user)
         await self.chat_repo.delete(chat)
+
+    async def ask_question(
+        self, chat_id: int, question_in: ChatAskRequest, current_user: User
+    ) -> ChatAskResponse:
+        chat = await self._get_owned_or_admin_chat(chat_id, current_user)
+
+        question = question_in.question.strip()
+        if not question:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Question cannot be empty",
+            )
+
+        result = await self._run_rag(question)
+        citations = result.get("citations", []) or []
+
+        return ChatAskResponse(
+            chat_id=chat.id,
+            question=question,
+            answer=result.get(
+                "answer",
+                "Tài liệu hiện tại không đề cập vấn đề này.",
+            ),
+            valid=bool(result.get("valid", False)),
+            citations=[
+                {
+                    "source": citation.get("source"),
+                    "pages": citation.get("pages", []),
+                }
+                for citation in citations
+            ],
+        )
+
+    async def _run_rag(self, question: str) -> dict[str, Any]:
+        try:
+            from app.ai_agent.rag_pipeline import run_pipeline
+
+            result = run_pipeline(question)
+            if isinstance(result, dict):
+                return result
+        except Exception:
+            pass
+
+        return {
+            "valid": False,
+            "answer": "Tài liệu hiện tại không đề cập vấn đề này.",
+            "citations": [],
+        }
 
     async def _get_owned_or_admin_chat(self, chat_id: int, current_user: User) -> Chat:
         chat = await self.chat_repo.get_by_id(chat_id)
