@@ -13,14 +13,17 @@ SYSTEM_PROMPT_TEMPLATE = """Bạn là trợ lý AI tra cứu tài liệu nội b
 Quy tắc nghiêm ngặt:
 1. Chỉ sử dụng thông tin nằm trong thẻ <context> để trả lời.
 2. Tuyệt đối không sử dụng kiến thức bên ngoài hoặc tự suy đoán.
-3. Trước khi trả lời, phải kiểm tra xem <context> có thực sự chứa thông tin để trả lời đúng ý câu hỏi hay không.
-4. Không được trả lời một câu hỏi khác chỉ vì <context> có chứa một vài từ khóa giống với câu hỏi.
-5. Nếu câu hỏi không được tài liệu đề cập hoặc ngữ cảnh không đủ để trả lời đúng câu hỏi, hãy trả lời:
+3. Đọc toàn bộ <context> trước khi quyết định có thể trả lời câu hỏi hay không.
+4. Nếu <context> chứa thông tin liên quan trực tiếp đến câu hỏi, hãy trả lời bằng chính thông tin đó, kể cả khi tài liệu không có một câu định nghĩa hoàn chỉnh.
+5. Có thể tổng hợp thông tin từ nhiều đoạn trong <context>, nhưng không được bổ sung thông tin từ kiến thức bên ngoài.
+6. Không được trả lời một câu hỏi khác chỉ vì <context> có chứa một vài từ khóa giống với câu hỏi.
+7. Nếu <context> không chứa thông tin đủ liên quan để trả lời câu hỏi, hãy trả lời chính xác:
 "Tài liệu hiện tại không đề cập vấn đề này."
-6. Nếu chỉ một phần câu hỏi được tài liệu hỗ trợ, chỉ trả lời phần được hỗ trợ và nói rõ phần còn lại không được đề cập.
-7. Không được tự suy đoán, bổ sung hoặc diễn giải thông tin không có trong tài liệu.
-8. Nếu câu hỏi mơ hồ hoặc không có ý nghĩa rõ ràng trong ngữ cảnh tài liệu, không được tự suy diễn ý định của người dùng. Hãy trả lời:
+8. Nếu <context> chỉ hỗ trợ một phần câu hỏi, hãy trả lời phần được tài liệu hỗ trợ và nói rõ rằng tài liệu không cung cấp thêm thông tin cho phần còn lại.
+9. Không được tự suy đoán, bổ sung hoặc diễn giải thông tin không có trong tài liệu.
+10. Nếu câu hỏi mơ hồ hoặc không có ý nghĩa rõ ràng trong ngữ cảnh tài liệu, hãy trả lời:
 "Tài liệu hiện tại không đề cập vấn đề này."
+11. Trả lời ngắn gọn, trực tiếp vào câu hỏi. Không đề cập đến quá trình retrieval, reranking, điểm số hoặc kiến trúc hệ thống.
 """
 
 qa_prompt = ChatPromptTemplate.from_messages([
@@ -65,12 +68,12 @@ def generate_answer(query: str, context_chunks) -> str:
 
 
 
-    # test
-    # # Debug context trước khi gửi LLM
+    # # test
+    # # # Debug context trước khi gửi LLM
     # print("\n===== CONTEXT SENT TO LLM =====")
     # print(context_text)
     # print("================================\n")
-    #
+
 
 
 
@@ -90,9 +93,9 @@ def generate_answer(query: str, context_chunks) -> str:
     #     context=context_text,
     #     query=query
     # )
-
-
-    # test
+    #
+    #
+    # # test
     # print("\n===== ACTUAL PROMPT =====")
     # for message in messages:
     #     print(f"\n[{message.type}]")
@@ -107,11 +110,11 @@ def generate_answer(query: str, context_chunks) -> str:
     })
 
 
-    # test
+    # # test
     # print("\n===== RAW LLM RESPONSE =====")
     # print(repr(response))
     # print("============================\n")
-
+    #
 
 
     return response.strip()

@@ -17,7 +17,7 @@ Cách chạy:
 
 from dataclasses import dataclass
 
-from hybrid_retrieval import retrieve_semantic, retrieve_hybrid, _doc_id
+from .hybrid_retrieval import HybridRetriever, _doc_id
 
 
 @dataclass
@@ -112,10 +112,14 @@ def print_comparison_report(semantic_metrics: dict, hybrid_metrics: dict, top_k:
         print(f"  Hybrid trả về    : {h['retrieved_ids']} ({'✓ hit' if h['hit'] else '✗ miss'})")
 
 
-def run_comparison(eval_set: list[EvalCase] = DEFAULT_EVAL_SET, top_k: int = 3):
+def run_comparison(
+    hybrid_retriever: HybridRetriever,
+    eval_set: list[EvalCase] = DEFAULT_EVAL_SET,
+    top_k: int = 3,
+):
     """Chạy full comparison giữa Semantic (T13) và Hybrid (T14), in báo cáo."""
-    semantic_metrics = evaluate_retriever(retrieve_semantic, eval_set, top_k)
-    hybrid_metrics = evaluate_retriever(retrieve_hybrid, eval_set, top_k)
+    semantic_metrics = evaluate_retriever(hybrid_retriever.retrieve_semantic, eval_set, top_k)
+    hybrid_metrics = evaluate_retriever(hybrid_retriever.retrieve, eval_set, top_k)
 
     print_comparison_report(semantic_metrics, hybrid_metrics, top_k)
 
@@ -123,4 +127,5 @@ def run_comparison(eval_set: list[EvalCase] = DEFAULT_EVAL_SET, top_k: int = 3):
 
 
 if __name__ == "__main__":
-    run_comparison()
+    from .retrieval import QdrantRetriever
+    run_comparison(HybridRetriever(QdrantRetriever()))

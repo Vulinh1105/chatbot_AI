@@ -1,107 +1,239 @@
-from retrieval import retrieve
-from reranking import Reranker
-from prompt import generate_answer
-from validation import validate_answer
 
-RERANK_TOP_K = 3
+from __future__ import annotations
 
-reranker = Reranker()
+from dataclasses import dataclass, field
+from typing import Any, Callable, Protocol
 
-# main pipeline
-def run_pipeline(
+from langchain_core.documents import Document
+
+from .evaluate_retrieval import EvalCase, run_comparison
+from .graph import GraphDependencies, build_rag_graph
+from .hybrid_retrieval import HybridRetriever
+from .prompt import generate_answer
+from .retrieval import QdrantRetriever, Retriever
+from .validation import check_query
+
+
+@dataclass
+class Turn:
+    """
+    Represents one completed conversation turn.
+    """
+
     query: str
-):
-
-    # retrieval
-    retrieved_chunks = retrieve(
-        query
-    )
-
-    # print(
-    #     f"[Retrieval] Found "
-    #     f"{len(retrieved_chunks)} chunks."
-    # )
-
-    #  reranking
-    reranked_chunks, latency_ms = (
-        reranker.rerank(
-            query,
-            retrieved_chunks,
-            top_k=RERANK_TOP_K,
-        )
-    )
-
-    # print(
-    #     f"[Reranking] Selected "
-    #     f"{len(reranked_chunks)} chunks."
-    # )
-
-    # print(
-    #     f"[Reranking] Latency: "
-    #     f"{latency_ms:.2f} ms"
-    # )
-
-    # print("\n[Context sent to LLM]")
-    # for i, doc in enumerate(reranked_chunks, start=1):
-    #     print(f"--- Chunk {i} ---")
-    #     print(doc.page_content)
-    #     print("Metadata:", doc.metadata)
-
-    # generation
-    answer = generate_answer(
-        query,
-        reranked_chunks
-    )
-
-    # validation
-    result = validate_answer(
-        answer,
-        reranked_chunks
-    )
+    answer: str
+    rewritten_query: str | None = None
+    context: list[Document] = field(default_factory=list)
 
 
-    return result
+# Conversation store interface
+class ConversationStore(Protocol):
+    """
+    Contract for conversation history storage.
+
+    Any storage implementation must provide:
+        get(session_id)
+        append(session_id, turn)
+
+    Examples:
+        - InMemoryConversationStore
+        - RedisConversationStore
+        - PostgreSQLConversationStore
+    """
+
+    def get(self, session_id: str) -> list[Turn]:
+        raise NotImplementedError
+
+    def append(self, session_id: str, turn: Turn) -> None:
+        raise NotImplementedError
 
 
-if __name__ == "__main__":
 
-    print("Khởi chạy chatbot_AI\n")
+class InMemoryConversationStore:
+    """
+    Stores conversation history in application memory.
 
-    while True:
-        query = input(
-            'Question (type "exit" to quit): '
+    Suitable for:
+        - local development
+        - testing
+        - demos
+
+    Not suitable for production persistence because
+    data disappears when the process/server restarts.
+    """
+
+    def __init__(self) -> None:
+        self._turns: dict[str, list[Turn]] = {}
+
+    def get(self, session_id: str) -> list[Turn]:
+        return list(
+            self._turns.get(session_id, [])
         )
 
-        if query.strip().lower() == "exit":
-            print(
-                "Program exited."
+    def append(
+        self,
+        session_id: str,
+        turn: Turn,
+    ) -> None:
+        if session_id not in self._turns:
+            self._turns[session_id] = []
+
+        self._turns[session_id].append(turn)
+
+
+# RAG Pipeline
+
+class RAGPipeline:
+
+    def __init__(
+        self,
+        *,
+        retriever: Retriever | HybridRetriever | None = None,
+        rerank: Callable[
+            [str, list[Document], int],
+            tuple[list[Document], float],
+        ]
+        | None = None,
+        generate: Callable[
+            [str, list[Document]],
+            str,
+        ] = generate_answer,
+        store: ConversationStore | None = None,
+        query_checker: Callable[
+            [str],
+            Any,
+        ] = check_query,
+    ) -> None:
+
+        #  Create retrieval component
+        semantic_retriever = retriever or QdrantRetriever()
+
+        # If the supplied retriever is already hybrid,
+        # use it directly.
+        if isinstance(
+            semantic_retriever,
+            HybridRetriever,
+        ):
+            self.retriever = semantic_retriever
+
+        # Otherwise wrap the semantic retriever
+        # inside HybridRetriever.
+        else:
+            self.retriever = HybridRetriever(
+                semantic_retriever
             )
-            break
 
-        if not query.strip():
-            continue
+        #  Create conversation storage
+        self.store = (
+            store
+            if store is not None
+            else InMemoryConversationStore()
+        )
 
-        # run pipeline
-        try:
-            result = run_pipeline(
-                query
-            )
-            print("\nchatbot AI Answer:")
+        # built LangGraph
+        dependencies = GraphDependencies(
+            retriever=self.retriever,
+            rerank=rerank,
+            generate=generate,
+            query_checker=query_checker,
+            store=self.store,
+            turn_factory=Turn,
+        )
 
-            print(result["answer"])
+        self.graph = build_rag_graph(
+            dependencies
+        )
 
-            print(
-                f"\nValidation: "
-                f"{result['valid']}"
-            )
-            print('\n\n\n\n')
+    # Runnnnn Timeeee
+    def run(
+        self,
+        query: str,
+        session_id: str = "default",
+    ) -> dict[str, Any]:
 
-        except Exception as e:
+        # get previous conversation
+        history = self.store.get(
+            session_id
+        )
 
-            print("\n[Lỗi Pipeline]")
+        # execute complete LangGraph workflow
+        initial_state = {
+            "query": query,
+            "session_id": session_id,
+            "history": history,
+            "hybrid_attempted": False,
+        }
 
-            print(
-                str(e)
-            )
+        result = self.graph.invoke(
+            initial_state
+        )
 
-            print('\n\n\n\n')
+        # Return only application-facing fields
+        output_keys = (
+            "answer",
+            "valid",
+            "citations",
+            "rewritten_query",
+            "needs_rewrite",
+            "route",
+            "refusal_reason",
+            "retrieval_quality",
+            "guardrail_reason",
+            "retrieved_chunks",
+            "reranked_chunks",
+        )
+
+        return {
+            key: result.get(key)
+            for key in output_keys
+        }
+
+
+    # Offline retrieval evaluation
+    def evaluate_retrieval(
+        self,
+        eval_set: list[EvalCase],
+        top_k: int = 3,
+    ) -> tuple[dict, dict]:
+
+        return run_comparison(
+            self.retriever,
+            eval_set=eval_set,
+            top_k=top_k,
+        )
+
+
+# 7. Application-level pipeline instance
+_pipeline: RAGPipeline | None = None
+
+
+def get_pipeline() -> RAGPipeline:
+    """
+    Return the shared RAGPipeline instance.
+
+    The graph is created once and reused across requests.
+    """
+
+    global _pipeline
+
+    if _pipeline is None:
+        _pipeline = RAGPipeline()
+
+    return _pipeline
+
+
+# 8. Public entry point
+def run_pipeline(
+    query: str,
+    session_id: str = "default",
+) -> dict[str, Any]:
+    """
+    Public function used by the API/application layer.
+    """
+
+    pipeline = get_pipeline()
+
+    return pipeline.run(
+        query=query,
+        session_id=session_id,
+    )
