@@ -6,15 +6,11 @@ from app.api.deps import get_chat_service, get_current_user
 from app.model.chat import Chat
 from app.model.user import User
 from app.schemas.chat import (
-<<<<<<< HEAD
     ChatCreate,
     ChatHistoryResponse,
     ChatListResponse,
-=======
     ChatAskRequest,
     ChatAskResponse,
-    ChatCreate,
->>>>>>> 8ec8fc3 (task 4)
     ChatResponse,
     ChatUpdate,
 )
@@ -75,16 +71,6 @@ async def read_chat_history(
         limit=limit,
         cursor=cursor,
     )
-
-
-@router.get("/{chat_id}", response_model=ChatResponse, summary="Get a chat")
-async def read_chat(
-    chat_id: int,
-    current_user: Annotated[User, Depends(get_current_user)],
-    chat_service: Annotated[ChatService, Depends(get_chat_service)],
-) -> Chat:
-    return await chat_service.get_chat(chat_id, current_user)
-
 
 @router.post(
     "/{chat_id}/ask",

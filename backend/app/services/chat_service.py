@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-from typing import Optional, Sequence
-=======
-from typing import Any, Sequence
->>>>>>> 8ec8fc3 (task 4)
+from typing import Optional, Sequence, Any
 
 from fastapi import HTTPException, status
 
@@ -11,17 +7,13 @@ from app.model.chat import Chat
 from app.model.user import User
 from app.repository.chat_repository import ChatRepository
 from app.schemas.chat import (
-<<<<<<< HEAD
-    ChatCreate,
     ChatHistoryResponse,
     ChatListResponse,
     ChatMessageResponse,
     ChatResponse,
-=======
     ChatAskRequest,
     ChatAskResponse,
     ChatCreate,
->>>>>>> 8ec8fc3 (task 4)
     ChatUpdate,
 )
 
@@ -119,7 +111,6 @@ class ChatService:
             question=question,
             answer=result.get(
                 "answer",
-                "Tài liệu hiện tại không đề cập vấn đề này.",
             ),
             valid=bool(result.get("valid", False)),
             citations=[

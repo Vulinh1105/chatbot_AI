@@ -66,31 +66,3 @@ def retrieve(query):
 #             print('Metadata:', doc.metadata)
 #
 # print('retrieval done')
-
-from app.ai_agent.retrieval import retrieve
-from app.ai_agent.reranking import Reranker
-from app.ai_agent.prompt import generate_answer
-from app.ai_agent.validation import validate_answer
-
-RERANK_TOP_K = 3
-
-reranker = Reranker()
-
-def run_pipeline(query: str):
-    try:
-        retrieved_chunks = retrieve(query)
-        reranked_chunks, _ = reranker.rerank(
-            query,
-            retrieved_chunks,
-            top_k=RERANK_TOP_K,
-        )
-        answer = generate_answer(query, reranked_chunks)
-        result = validate_answer(answer, reranked_chunks)
-        return result
-    except Exception:
-        return {
-            "valid": False,
-            "answer": "Tài liệu hiện tại không đề cập vấn đề này.",
-            "citations": [],
-        }
-
