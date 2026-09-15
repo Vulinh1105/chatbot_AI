@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import os
 from typing import AsyncGenerator
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,3 +71,24 @@ async def db_check(db: AsyncSession = Depends(get_db)):
             detail=f"Database connection failed: {str(e)}",
         )
 
+@app.get("/health", tags=["Health"])
+async def health_check(db: AsyncSession = Depends(get_db)):
+    health_status = {"status": "ok", "postgres": "ok", "qdrant": "ok"}
+    try:
+        result = await db.execute(text("SELECT 1"))
+        result.fetchone()
+    except Exception:
+        health_status["postgres"] = "unhealthy"
+    try:
+        from qdrant_client import QdrantClient
+        qdrant_host = os.getenv("QDRANT_HOST", "qdrant")
+        qdrant_port = int(os.getenv("QDRANT_PORT", 6333))
+        client = QdrantClient(host=qdrant_host, port=qdrant_port, timeout=2.0)
+        client.get_collections()
+    except Exception:
+        health_status["qdrant"] = "unhealthy"
+    is_ready = all(v == "ok" for v in health_status.values())
+    return JSONResponse(
+        content=health_status,
+        status_code=200 if is_ready else 503
+    )
