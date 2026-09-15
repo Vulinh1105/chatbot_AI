@@ -1,68 +1,58 @@
-from pathlib import Path
-from langchain_openai import OpenAIEmbeddings
-#from langchain_community.vectorstores import FAISS
-from dotenv import load_dotenv
-from langchain_qdrant import QdrantVectorStore
+from __future__ import annotations
+
 import os
+from typing import Protocol
+
+from dotenv import load_dotenv
+from langchain_core.documents import Document
 
 load_dotenv()
+COLLECTION_NAME = os.getenv(
+    "QDRANT_COLLECTION",
+    "chatbot_documents_v2")
+
+# nhận: query, trả về: Document
+class Retriever(Protocol):
+    def retrieve(self, query: str, k: int = 8) -> list[Document]: ...
 
 
-QDRANT_URL = os.getenv("QDRANT_URL")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-COLLECTION_NAME = "chatbot_documents_v2"
+class QdrantRetriever:
+    def __init__(self, collection_name: str = COLLECTION_NAME) -> None:
+        self.collection_name = collection_name
+        self._store = None
+
+    # hàm kết nối collection qdrant, tái kết noois
+    def _get_store(self):
+        if self._store is None:
+            from langchain_openai import OpenAIEmbeddings
+            from langchain_qdrant import QdrantVectorStore
+            self._store = QdrantVectorStore.from_existing_collection(
+                embedding=OpenAIEmbeddings(model="text-embedding-3-large"),
+                collection_name=self.collection_name,
+                url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"),
+                prefer_grpc=False,
+            )
+        return self._store
+
+    # retrieve: node
+    def retrieve(self, query: str, k: int = 8) -> list[Document]:
+        try:
+            results = self._get_store().similarity_search_with_relevance_scores(query, k=k)
+        except Exception:
+            return []
+        output = []
+        for document, score in results:
+            metadata = dict(document.metadata)
+            metadata["retrieval_score"] = float(score)
+            output.append(Document(page_content=document.page_content, metadata=metadata))
+        return output
 
 
-# print("URL:", QDRANT_URL)
-# print("API KEY exists:", QDRANT_API_KEY is not None)
+_default_retriever: QdrantRetriever | None = None
 
 
-embedder = OpenAIEmbeddings(
-    model='text-embedding-3-large'
-)
-
-# Khởi tạo Qdrant vector store từ collection đã tồn tại
-db = QdrantVectorStore.from_existing_collection(
-    embedding=embedder,
-    collection_name=COLLECTION_NAME,
-    url=QDRANT_URL,
-    api_key=QDRANT_API_KEY,
-    prefer_grpc=False
-)
-# print('connected to QDRANT successfully.')
-
-
-retriever = db.as_retriever(
-    search_type="similarity",
-    search_kwargs={"k": 5}
-)
-# print('done topK + score')
-
-
-# Hàm Retrieval
-def retrieve(query):
-    results = retriever.invoke(query)
-    return results
-
-
-# if __name__ == '__main__':
-#     while True:
-#         query = input('Question (type "exit" to quit): ')
-#
-#         if query == 'exit':
-#             print('program exited.')
-#             break
-#         if not query.strip():
-#             continue
-#
-#
-#         results = retrieve(query)
-#
-#         print(f'\nFind {len(results)} chunks:\n')
-#
-#         for i, doc in enumerate(results, start=1):
-#             print(f'--- Result {i} ---')
-#             print('Content:', doc.page_content)
-#             print('Metadata:', doc.metadata)
-#
-# print('retrieval done')
+def retrieve(query: str, k: int = 8) -> list[Document]:
+    global _default_retriever
+    if _default_retriever is None:
+        _default_retriever = QdrantRetriever()
+    return _default_retriever.retrieve(query, k)

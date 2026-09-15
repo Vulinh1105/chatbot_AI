@@ -1,22 +1,102 @@
+from dataclasses import dataclass
+import re
 from typing import List, Dict, Any
 
-from langchain_core import documents
 from langchain_core.documents import Document
 
 
 NO_EVIDENCE_MESSAGE = "Tài liệu hiện tại không đề cập vấn đề này."
 
+NO_EVIDENCE_PREFIXES = (
+    "tài liệu hiện tại không đề cập",
+    "tài liệu không đề cập",
+    "không tìm thấy thông tin",
+    "không có thông tin",
+)
+
+
+# kiểm tra input
+@dataclass(frozen=True)
+class QueryCheckResult:
+    allowed: bool
+    reason: str | None = None
+
+
+_UNSAFE_PATTERNS = (
+    r"\b(ignore|bypass|reveal|leak|dump)\b.{0,60}\b(system prompt|instruction|api key|password|secret)\b",
+    r"\b(delete|drop|truncate|format)\b.{0,40}\b(database|table|filesystem|file)\b",
+    r"\b(hack|exploit|malware|ransomware|ddos|phishing)\b",
+    r"\b(tự sát|tu sat|giết người|giet nguoi|chế tạo bom|che tao bom)\b",
+)
+
+_OUT_OF_SCOPE_PATTERNS = (
+    r"\b(thời tiết|weather forecast|giá cổ phiếu|stock price|crypto price|tỷ số bóng đá|sports score)\b",
+    r"\b(kể chuyện cười|write (a )?poem|viết thơ)\b",
+)
+
+
+# kiểm tra
+def check_query(
+    query: str,
+    *,
+    max_length: int = 2_000
+) -> QueryCheckResult:
+
+    if not isinstance(query, str) or not query.strip():
+        return QueryCheckResult(False, "empty_query")
+
+    normalized = " ".join(query.split())
+
+    if len(normalized) > max_length:
+        return QueryCheckResult(False, "query_too_long")
+
+    if any(
+        re.search(
+            pattern,
+            normalized,
+            flags=re.IGNORECASE
+        )
+        for pattern in _UNSAFE_PATTERNS
+    ):
+        return QueryCheckResult(False, "unsafe_or_out_of_scope")
+
+    if any(
+        re.search(
+            pattern,
+            normalized,
+            flags=re.IGNORECASE
+        )
+        for pattern in _OUT_OF_SCOPE_PATTERNS
+    ):
+        return QueryCheckResult(False, "out_of_scope")
+
+    if not re.search(
+        r"[A-Za-zÀ-ỹà-ỹ0-9]",
+        normalized
+    ):
+        return QueryCheckResult(False, "meaningless_query")
+
+    return QueryCheckResult(True)
+
+
 # check evidence
 def has_evidence(
     chunks: List[Document]
 ) -> bool:
+
     if not chunks:
         return False
+
     for chunk in chunks:
         if isinstance(chunk, Document):
-            if (chunk.page_content and chunk.page_content.strip()):
+            if (
+                chunk.page_content
+                and chunk.page_content.strip()
+            ):
                 return True
+
     return False
+
 
 # get source metadata
 def get_source_metadata(
@@ -25,6 +105,7 @@ def get_source_metadata(
     """
     Lấy metadata citation từ Document
     """
+
     if not isinstance(
         chunk,
         Document
@@ -33,6 +114,7 @@ def get_source_metadata(
             "source": None,
             "page": None,
             "chunk_index": None,
+            "chunk_id": None,
         }
 
     metadata = chunk.metadata
@@ -47,19 +129,27 @@ def get_source_metadata(
         or metadata.get("file_name")
         or metadata.get("filename")
         or metadata.get("document_name")
+        or (
+            f"document_{metadata['document_id']}"
+            if metadata.get("document_id") is not None
+            else None
+        )
     )
 
     # page
     page = metadata.get("page")
+
     if page is None:
         page = metadata.get("page_number")
 
     # chunk_index
     chunk_index = metadata.get("chunk_index")
+
     return {
         "source": source,
         "page": page,
         "chunk_index": chunk_index,
+        "chunk_id": metadata.get("chunk_id"),
     }
 
 
@@ -76,7 +166,6 @@ def build_citations(
     for chunk in chunks:
 
         metadata = get_source_metadata(chunk)
-
         source = metadata["source"]
         page = metadata["page"]
 
@@ -87,20 +176,35 @@ def build_citations(
         if source not in grouped:
             grouped[source] = {
                 "source": source,
-                "pages": []
+                "pages": [],
+                "chunk_ids": []
             }
 
-        if page is not None and page not in grouped[source]["pages"]:
+        if (
+            page is not None
+            and page not in grouped[source]["pages"]
+        ):
             grouped[source]["pages"].append(page)
+
+        if (
+            metadata["chunk_id"] is not None
+            and metadata["chunk_id"]
+            not in grouped[source]["chunk_ids"]
+        ):
+            grouped[source]["chunk_ids"].append(
+                metadata["chunk_id"]
+            )
 
     citations = []
 
     for source, data in grouped.items():
+
         data["pages"].sort()
 
         citations.append({
             "source": source,
-            "pages": data["pages"]
+            "pages": data["pages"],
+            "chunk_ids": data["chunk_ids"],
         })
 
     return citations
@@ -125,29 +229,60 @@ def format_citations(
 
         source = citation["source"]
         pages = citation.get("pages", [])
+        chunk_ids = citation.get("chunk_ids", [])
+
+        chunk_text = (
+            f" (chunk: {', '.join(str(item) for item in chunk_ids)})"
+            if chunk_ids
+            else ""
+        )
 
         # Có source + page
         if pages:
+
             pages = sorted(set(pages))
 
             if len(pages) == 1:
                 page_text = f"trang {pages[0]}"
             else:
-                page_text = "trang " + ", ".join(
-                    str(page) for page in pages
+                page_text = (
+                    "trang "
+                    + ", ".join(
+                        str(page)
+                        for page in pages
+                    )
                 )
 
             lines.append(
-                f"- {source}, {page_text}"
+                f"- {source}, {page_text}{chunk_text}"
             )
 
         # Chỉ có source
         else:
             lines.append(
-                f"- {source}"
+                f"- {source}{chunk_text}"
             )
 
     return "\n".join(lines)
+
+
+# hàm nhan diện no-evidence
+def is_no_evidence_answer(
+    answer: str
+) -> bool:
+
+    if not isinstance(answer, str):
+        return False
+
+    normalized = " ".join(
+        answer.strip().lower().split()
+    )
+
+    return any(
+        normalized.startswith(prefix)
+        for prefix in NO_EVIDENCE_PREFIXES
+    )
+
 
 # final
 def validate_answer(
@@ -166,29 +301,31 @@ def validate_answer(
     }
     """
 
-    # 1. Không có evidence
-    if not has_evidence(chunks):
-
+    # 1. LLM không trả lời
+    if not isinstance(answer, str) or not answer.strip():
         return {
             "valid": False,
-            "answer": NO_EVIDENCE_MESSAGE,
-            "citations": []
-        }
-
-    # 2. LLM không trả lời
-    if not answer or not answer.strip():
-        return {
-            "valid": False,
+            "reason": "empty_answer",
             "answer": NO_EVIDENCE_MESSAGE,
             "citations": []
         }
 
     answer = answer.strip()
 
-    # 3. LLM đã trả câu từ chối
-    if answer == NO_EVIDENCE_MESSAGE:
+    # 2. LLM trả câu no-evidence
+    if is_no_evidence_answer(answer):
         return {
             "valid": False,
+            "reason": "no_evidence",
+            "answer": NO_EVIDENCE_MESSAGE,
+            "citations": []
+        }
+
+    # 3. Không có evidence
+    if not has_evidence(chunks):
+        return {
+            "valid": False,
+            "reason": "no_context",
             "answer": NO_EVIDENCE_MESSAGE,
             "citations": []
         }
@@ -200,20 +337,23 @@ def validate_answer(
     if not citations:
         return {
             "valid": False,
+            "reason": "missing_citations",
             "answer": NO_EVIDENCE_MESSAGE,
             "citations": []
         }
 
     # 5. Ghép Answer + Citation
     final_answer = (
-        answer +
-        format_citations(citations)
+        answer
+        + format_citations(citations)
     )
 
     return {
         "valid": True,
+        "reason": None,
         "answer": final_answer,
         "citations": citations
     }
+
 
 # print('validation done')
