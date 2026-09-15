@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 from typing import AsyncGenerator
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +13,7 @@ from app.api.v1.endpoints.document import router as document_router
 from app.core.config import settings
 from app.database import Base, engine, get_db
 from app.model.chat import Chat  # noqa: F401 - registers the model metadata
+from app.model.chat_message import ChatMessage  # noqa: F401 - registers the model metadata
 
 
 @asynccontextmanager
@@ -44,7 +46,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix=f"{settings.api_v1_str}/auth", tags=["Auth"])
 app.include_router(user_router, prefix=f"{settings.api_v1_str}/users", tags=["Users"])
 app.include_router(chat_router, prefix=f"{settings.api_v1_str}/chats", tags=["Chats"])
-app.include_router(document_router, prefix=f"{settings.api_v1_str}/documents", tags=["Documents"])
+app.include_router(document_router, prefix=f"{settings.api_v1_str}/documents", tags=["Documents"],)
 
 
 @app.get("/", tags=["General"])
