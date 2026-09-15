@@ -10,7 +10,7 @@ from app.schemas.chat import (
     ChatHistoryResponse,
     ChatListResponse,
     ChatAskRequest,
-    ChatAskResponse,
+    ChatMessageResponse,
     ChatResponse,
     ChatUpdate,
 )
@@ -74,7 +74,7 @@ async def read_chat_history(
 
 @router.post(
     "/{chat_id}/ask",
-    response_model=ChatAskResponse,
+    response_model=ChatMessageResponse,
     summary="Ask a question in the selected chat using the RAG adapter",
 )
 async def ask_question_in_chat(
@@ -82,7 +82,7 @@ async def ask_question_in_chat(
     question_in: ChatAskRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
-) -> ChatAskResponse:
+) -> ChatMessageResponse:
     return await chat_service.ask_question(chat_id, question_in, current_user)
 
 

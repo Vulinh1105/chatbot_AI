@@ -1,6 +1,4 @@
-# ThinkDocu API
-
-Backend REST API cho ThinkDocu, hiện cung cấp xác thực JWT và quản lý người dùng. Ứng dụng được xây dựng bằng FastAPI, SQLAlchemy bất đồng bộ và PostgreSQL hoặc SQLite.
+# ThinkDocu
 
 ## Chức năng hiện có
 
@@ -21,8 +19,7 @@ Backend REST API cho ThinkDocu, hiện cung cấp xác thực JWT và quản lý
 - Docker Compose
 
 ## Cấu trúc thư mục
-
-text
+``````
 └── backend              
     ├── alembic/
     └── app/
@@ -43,7 +40,8 @@ text
             └── 2/               # Lưu trữ tài liệu user_id
     └── tests/
         └── test_api.py          # Kiểm thử luồng xác thực và người dùng
-
+└── frontend 
+``````
 ## Yêu cầu
 
 - Python 3.12+ nếu chạy trực tiếp trên máy
@@ -54,21 +52,28 @@ text
 Tạo file .env ở thư mục gốc dự án. Ví dụ:
 
 env
+```
 API_V1_STR=/api/v1
 PROJECT_NAME=ThinkDocu
-SECRET_KEY=thay-bang-mot-chuoi-ngau-nhien-dai-va-bao-mat
+SECRET_KEY=SECRET_KEY
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
+ACCESS_TOKEN_EXPIRE_MINUTES=1
 ADMIN_USERNAME=admin
 DOCUMENTS_DIR=./backend/documents
-
+OPENAI_API_KEY=OPENAI_API_KEY
+QDRANT_URL=QDRANT_URL
+QDRANT_API_KEY=QDRANT_API_KEY
+ENABLE_AUTO_EMBEDDING=true
+QDRANT_COLLECTION=QDRANT_COLLECTION
+```
 ### Chạy toàn bộ ứng dụng bằng Docker Compose
 
 Khi API và PostgreSQL cùng chạy trong Docker Compose, dùng hostname db (tên service), không dùng localhost:
 
 env
+```
 SQLALCHEMY_DATABASE_URI=postgresql+asyncpg://thinkdocu:thinkdocu_password@db:5432/thinkdocu_db
-
+```
 postgresql+asyncpg được khuyến nghị vì ứng dụng sử dụng SQLAlchemy bất đồng bộ.
 
 ### Chạy API trực tiếp trên máy, PostgreSQL chạy bằng Docker
@@ -76,8 +81,9 @@ postgresql+asyncpg được khuyến nghị vì ứng dụng sử dụng SQLAlch
 Khi Uvicorn chạy từ terminal hoặc IDE trên máy, dùng localhost vì cổng PostgreSQL đã được Docker map ra máy host:
 
 env
+```
 SQLALCHEMY_DATABASE_URI=postgresql+asyncpg://thinkdocu:thinkdocu_password@localhost:5432/thinkdocu_db
-
+```
 Code vẫn tự chuyển URL bắt đầu bằng `postgresql://` sang `postgresql+asyncpg://`, nhưng nên ghi rõ `+asyncpg` để cấu hình dễ hiểu và nhất quán.
 
 
@@ -86,63 +92,67 @@ Code vẫn tự chuyển URL bắt đầu bằng `postgresql://` sang `postgresq
 Nếu không cấu hình SQLALCHEMY_DATABASE_URI, ứng dụng mặc định dùng:
 
 env
+```
 SQLALCHEMY_DATABASE_URI=sqlite+aiosqlite:///./thinkdocu.db
-
+```
 ## Chạy bằng Docker Compose
-
+```
 docker compose up --build
-
+```
 API chạy tại [http://localhost:8000](http://localhost:8000), tài liệu Swagger tại [http://localhost:8000/docs](http://localhost:8000/docs). Docker Compose tự chạy migration Alembic trước khi khởi động API.
 
 Dừng các container:
 
+```
 docker compose down
-
+```
 ## Chạy trực tiếp trên máy
 
+```
 python -m venv .venv
-
+```
 Kích hoạt môi trường ảo:
-
+```
 .\.venv\Scripts\Activate.ps1
-
+```
 Cài dependencies và chạy migration:
-
+````
 pip install -r requirements.txt
 alembic upgrade head
-
+````
 Khởi động development server:
-
+```
 uvicorn --app-dir backend app.main:app --reload
-
+```
 ## API chính
 
-| Method | Endpoint | Mô tả | Xác thực |
-| --- | --- | --- | --- |
-| GET | / | Thông tin API | Không |
-| GET | /db-check | Kiểm tra database | Không |
-| POST | /api/v1/auth/register | Đăng ký tài khoản | Không |
-| POST | /api/v1/auth/login | Đăng nhập bằng form OAuth2 | Không |
-| POST | /api/v1/auth/login/json | Đăng nhập bằng JSON | Không |
-| GET | /api/v1/users/me | Xem hồ sơ hiện tại | JWT |
-| PUT | /api/v1/users/me | Cập nhật hồ sơ hiện tại | JWT |
-| DELETE | /api/v1/users/me | Xóa tài khoản hiện tại | JWT |
-| GET | /api/v1/users/ | Danh sách người dùng | Admin |
-| POST | /api/v1/users/ | Tạo người dùng | Admin |
-| GET | /api/v1/users/{user_id} | Xem người dùng theo ID | Admin |
-| PUT | /api/v1/users/{user_id} | Cập nhật người dùng | Admin |
-| DELETE | /api/v1/users/{user_id} | Xóa người dùng | Admin |
-| POST | /api/v1/chats/ | Tạo đoạn chat | JWT |
-| GET | /api/v1/chats/ | Xem các đoạn chat được phép truy cập | JWT |
-| GET | /api/v1/chats/{chat_id} | Xem một đoạn chat | JWT |
-| PUT | /api/v1/chats/{chat_id} | Sửa tiêu đề đoạn chat | JWT |
-| DELETE | /api/v1/chats/{chat_id} | Xóa đoạn chat | JWT |
-| POST | /api/v1/documents/ | Upload file multipart | JWT |
-| GET | /api/v1/documents/ | Danh sách file của mình (admin: tất cả) | JWT |
-| GET | /api/v1/documents/{document_id} | Metadata của file | Chủ sở hữu/Admin |
-| GET | /api/v1/documents/{document_id}/download | Đọc/tải file gốc | Chủ sở hữu/Admin |
-| PUT | /api/v1/documents/{document_id} | Thay thế nội dung file bằng multipart file | Chủ sở hữu/Admin |
-| DELETE | /api/v1/documents/{document_id} | Xóa file | Chủ sở hữu/Admin |
+| Method | Endpoint                                 | Mô tả                                      | Xác thực |
+|--------|------------------------------------------|--------------------------------------------| --- |
+| GET    | /                                        | Thông tin API                              | Không |
+| GET    | /db-check                                | Kiểm tra database                          | Không |
+| POST   | /api/v1/auth/register                    | Đăng ký tài khoản                          | Không |
+| POST   | /api/v1/auth/login                       | Đăng nhập bằng form OAuth2                 | Không |
+| POST   | /api/v1/auth/login/json                  | Đăng nhập bằng JSON                        | Không |
+| GET    | /api/v1/users/me                         | Xem hồ sơ hiện tại                         | JWT |
+| PUT    | /api/v1/users/me                         | Cập nhật hồ sơ hiện tại                    | JWT |
+| DELETE | /api/v1/users/me                         | Xóa tài khoản hiện tại                     | JWT |
+| GET    | /api/v1/users/                           | Danh sách người dùng                       | Admin |
+| POST   | /api/v1/users/                           | Tạo người dùng                             | Admin |
+| GET    | /api/v1/users/{user_id}                  | Xem người dùng theo ID                     | Admin |
+| PUT    | /api/v1/users/{user_id}                  | Cập nhật người dùng                        | Admin |
+| DELETE | /api/v1/users/{user_id}                  | Xóa người dùng                             | Admin |
+| POST   | /api/v1/chats/                           | Tạo đoạn chat                              | JWT |
+| GET    | /api/v1/chats/                           | Xem các đoạn chat được phép truy cập       | JWT |
+| GET    | /api/v1/chats/{chat_id}/messages         | Xem một đoạn chat                          | JWT |
+| POST   | /api/v1/chats/{chat_id}/ask              | Đặt một câu hỏi                            | JWT |
+| PUT    | /api/v1/chats/{chat_id}                  | Sửa tiêu đề đoạn chat                      | JWT |
+| DELETE | /api/v1/chats/{chat_id}                  | Xóa đoạn chat                              | JWT |
+| POST   | /api/v1/documents/                       | Upload file multipart                      | JWT |
+| GET    | /api/v1/documents/                       | Danh sách file của mình (admin: tất cả)    | JWT |
+| GET    | /api/v1/documents/{document_id}          | Metadata của file                          | Chủ sở hữu/Admin |
+| GET    | /api/v1/documents/{document_id}/download | Đọc/tải file gốc                           | Chủ sở hữu/Admin |
+| PUT    | /api/v1/documents/{document_id}          | Thay thế nội dung file bằng multipart file | Chủ sở hữu/Admin |
+| DELETE | /api/v1/documents/{document_id}          | Xóa file                                   | Chủ sở hữu/Admin |
 Quyền admin được cấp cho người dùng đầu tiên đăng ký (id = 1) hoặc người có username trùng với ADMIN_USERNAME (không phân biệt hoa/thường).
 
 ## Quản lý tài liệu

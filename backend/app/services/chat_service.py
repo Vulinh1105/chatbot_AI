@@ -13,7 +13,6 @@ from app.schemas.chat import (
     ChatMessageResponse,
     ChatResponse,
     ChatAskRequest,
-    ChatAskResponse,
     ChatCreate,
     ChatUpdate,
 )
@@ -94,7 +93,7 @@ class ChatService:
 
     async def ask_question(
         self, chat_id: int, question_in: ChatAskRequest, current_user: User
-    ) -> ChatAskResponse:
+    ) -> ChatMessageResponse:
         chat = await self._get_owned_or_admin_chat(chat_id, current_user)
 
         question = question_in.question.strip()
@@ -122,7 +121,7 @@ class ChatService:
             status=ChatMessageStatus.COMPLETED,
         )
 
-        await self.chat_repo.create_message(
+        response = await self.chat_repo.create_message(
             chat_id=chat.id,
             role=ChatMessageRole.SYSTEM,
             content=result.get("answer", ""),
@@ -130,13 +129,7 @@ class ChatService:
             status=ChatMessageStatus.COMPLETED,
         )
 
-        return ChatAskResponse(
-            chat_id=chat.id,
-            question=question,
-            answer=result.get("answer", ""),
-            valid=bool(result.get("valid", False)),
-            citations=citation_payload,
-        )
+        return ChatMessageResponse.model_validate(response)
 
     async def _run_rag(self, question: str) -> dict[str, Any]:
         try:
@@ -146,7 +139,10 @@ class ChatService:
             if isinstance(result, dict):
                 return result
         except Exception:
-            pass
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="RAG service is temporarily unavailable",
+            )
 
         return {
             "valid": False,

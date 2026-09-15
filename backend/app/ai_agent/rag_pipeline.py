@@ -1,7 +1,7 @@
-from retrieval import retrieve
-from reranking import Reranker
-from prompt import generate_answer
-from validation import validate_answer
+from app.ai_agent.prompt import generate_answer
+from app.ai_agent.reranking import Reranker
+from app.ai_agent.retrieval import retrieve
+from app.ai_agent.validation import validate_answer
 
 RERANK_TOP_K = 3
 
