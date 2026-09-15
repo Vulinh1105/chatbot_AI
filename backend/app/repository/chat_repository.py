@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.model.chat import Chat
-from app.model.chat_message import ChatMessage
+from app.model.chat_message import ChatMessage, ChatMessageRole, ChatMessageStatus
 from app.schemas.chat import ChatCreate, ChatUpdate
 
 
@@ -64,6 +64,26 @@ class ChatRepository:
 
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def create_message(
+        self,
+        chat_id: int,
+        role: ChatMessageRole,
+        content: str,
+        sources: list[dict] | None = None,
+        status: ChatMessageStatus = ChatMessageStatus.COMPLETED,
+    ) -> ChatMessage:
+        message = ChatMessage(
+            chat_id=chat_id,
+            role=role,
+            content=content,
+            sources=sources or [],
+            status=status,
+        )
+        self.db.add(message)
+        await self.db.commit()
+        await self.db.refresh(message)
+        return message
 
     async def get_messages_paginated(
         self,

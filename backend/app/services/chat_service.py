@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 
 from app.core.authorization import is_admin_user
 from app.model.chat import Chat
+from app.model.chat_message import ChatMessageRole, ChatMessageStatus
 from app.model.user import User
 from app.repository.chat_repository import ChatRepository
 from app.schemas.chat import (
@@ -106,20 +107,35 @@ class ChatService:
         result = await self._run_rag(question)
         citations = result.get("citations", []) or []
 
+        citation_payload = [
+            {
+                "source": citation.get("source"),
+                "pages": citation.get("pages", []),
+            }
+            for citation in citations
+        ]
+
+        await self.chat_repo.create_message(
+            chat_id=chat.id,
+            role=ChatMessageRole.USER,
+            content=question,
+            status=ChatMessageStatus.COMPLETED,
+        )
+
+        await self.chat_repo.create_message(
+            chat_id=chat.id,
+            role=ChatMessageRole.SYSTEM,
+            content=result.get("answer", ""),
+            sources=citation_payload,
+            status=ChatMessageStatus.COMPLETED,
+        )
+
         return ChatAskResponse(
             chat_id=chat.id,
             question=question,
-            answer=result.get(
-                "answer",
-            ),
+            answer=result.get("answer", ""),
             valid=bool(result.get("valid", False)),
-            citations=[
-                {
-                    "source": citation.get("source"),
-                    "pages": citation.get("pages", []),
-                }
-                for citation in citations
-            ],
+            citations=citation_payload,
         )
 
     async def _run_rag(self, question: str) -> dict[str, Any]:
