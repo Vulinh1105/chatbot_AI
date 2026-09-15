@@ -1,10 +1,16 @@
 import { memo } from "react";
-import ReactMarkdown from "react-markdown";
 import type { Message } from "../../types/chat";
+import { AnswerWithCitations } from "../citations/AnswerCitations";
+import ChatFeedbackButtons from "../ChatFeedbackButtons";
+import { useChatStore } from "../../stores/chatStore";
 
 const roleLabels = { user: "Bạn", assistant: "DocBot", system: "Hệ thống" };
 
 function MessageItem({ message, onRetry, busy = false }: { message: Message; onRetry?: (id: string) => void; busy?: boolean }) {
+  const conversationId = useChatStore((state) => state.activeConversationId);
+
+  const showFeedback = message.role === "assistant" && message.status !== "waiting" && message.status !== "streaming" && message.status !== "error";
+
   return (
     <li className={`chat-message chat-message-${message.role}`}>
       <article aria-label={`Tin nhắn từ ${roleLabels[message.role]}`}>
@@ -20,11 +26,14 @@ function MessageItem({ message, onRetry, busy = false }: { message: Message; onR
             </div>
           )}
           {message.role === "assistant" ? (
-            <ReactMarkdown skipHtml>{message.content}</ReactMarkdown>
+            <AnswerWithCitations content={message.content} citations={message.citations} />
           ) : (
             <p className="chat-message-text">{message.content}</p>
           )}
         </div>
+        {showFeedback && conversationId && (
+          <ChatFeedbackButtons messageId={message.id} conversationId={conversationId} />
+        )}
       </article>
     </li>
   );

@@ -1,0 +1,148 @@
+.feedback-admin {
+  min-height: 100vh;
+  padding: 32px;
+  background: #f9fafb;
+}
+
+.feedback-admin h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.feedback-admin > p {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.feedback-admin-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.feedback-admin-stat-card {
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.feedback-admin-stat-label {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.feedback-admin-stat-value {
+  margin: 4px 0 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.feedback-admin-stat-value.is-success {
+  color: #2563eb;
+}
+
+.feedback-admin-stat-value.is-danger {
+  color: #dc2626;
+}
+
+.feedback-admin-filters {
+  display: flex;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.feedback-admin-filter-btn {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.feedback-admin-filter-btn:hover:not(.is-active) {
+  background: #f3f4f6;
+}
+
+.feedback-admin-filter-btn.is-active {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.feedback-admin-table-wrap {
+  margin-top: 16px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.feedback-admin-table-wrap .feedback-admin-note {
+  padding: 24px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.feedback-admin-table-wrap .feedback-admin-note.is-error {
+  color: #dc2626;
+}
+
+.feedback-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.feedback-admin-table thead tr {
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  text-align: left;
+  color: #6b7280;
+}
+
+.feedback-admin-table th {
+  padding: 10px 16px;
+  font-weight: 600;
+}
+
+.feedback-admin-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  color: #4b5563;
+}
+
+.feedback-admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.feedback-admin-table .feedback-admin-empty {
+  text-align: center;
+  color: #9ca3af;
+  padding: 24px;
+}
+
+.feedback-admin-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.feedback-admin-badge.is-up {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.feedback-admin-badge.is-down {
+  background: #fef2f2;
+  color: #dc2626;
+}

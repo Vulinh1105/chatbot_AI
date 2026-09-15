@@ -17,6 +17,7 @@ const ALLOWED_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "text/plain",
+  "text/csv",
 ];
 
 const getErrorMessage = (error: unknown): string => {
@@ -97,7 +98,7 @@ function DocumentUpload() {
 
   const validateFile = (file: File): string | null => {
     if (!ALLOWED_TYPES.includes(file.type)) {
-      return "Chỉ hỗ trợ file PDF, DOCX hoặc TXT";
+      return "Chỉ hỗ trợ file PDF, DOCX, TXT hoặc CSV";
     }
 
     if (file.size > MAX_FILE_SIZE) {
@@ -236,7 +237,7 @@ function DocumentUpload() {
           type="file"
           hidden
           multiple
-          accept=".pdf,.docx,.txt"
+          accept=".pdf,.docx,.txt,.csv"
           onChange={handleFileChange}
         />
 
@@ -248,7 +249,7 @@ function DocumentUpload() {
           Kéo và thả file vào đây hoặc click để chọn file
         </p>
 
-        <p>Hỗ trợ PDF, DOCX, TXT — tối đa 20MB</p>
+        <p>Hỗ trợ PDF, DOCX, TXT, CSV — tối đa 20MB</p>
       </div>
 
       {items.length > 0 && (

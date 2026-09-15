@@ -1,5 +1,5 @@
 import React, { useState, useId } from 'react';
-import { Citation } from '../../types/chat';
+import type { Citation } from '../../types/chat';
 import { CitationBadge } from './CitationBadge';
 import { SourceCard } from './SourceCard';
 import { SourceDrawer } from './SourceDrawer';
