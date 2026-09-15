@@ -3,5 +3,9 @@ import { useChatStore } from "../stores/chatStore";
 
 export function useChatSession() {
   const cancel = useChatStore((state) => state.cancelRequest);
-  useEffect(() => () => cancel(), [cancel]);
+  const load = useChatStore((state) => state.loadConversations);
+  useEffect(() => {
+    if (!useChatStore.getState().initialized) void load();
+    return () => cancel();
+  }, [cancel, load]);
 }

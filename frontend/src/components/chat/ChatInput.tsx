@@ -92,6 +92,7 @@ function ChatInput({ value, onChange, onSend, disabled = false, sendDisabled = f
           event.preventDefault();
           if (!event.repeat) send();
         }}
+        maxLength={5000}
         rows={3}
         placeholder="Nhập câu hỏi của bạn…"
         aria-describedby={`${inputId}-hint`}
