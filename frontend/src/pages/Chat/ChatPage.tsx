@@ -9,6 +9,11 @@ import { useChatSession } from "../../hooks/useChatSession";
 function ChatPage() {
   useChatSession();
 
+  const loading = useChatStore((state) => state.loadingHistory[state.activeConversationId]);
+  const historyError = useChatStore((state) => state.historyErrors[state.activeConversationId]);
+  const deleting = useChatStore((state) => state.deleting[state.activeConversationId]);
+  const serverId = useChatStore((state) => state.serverIds[state.activeConversationId]);
+  const loadHistory = useChatStore((state) => state.loadHistory);
   const pending = useChatStore((state) => state.pendingRequest);
   const retry = useChatStore((state) => state.retryMessage);
   const stop = useChatStore((state) => state.stopRequest);
@@ -47,11 +52,15 @@ function ChatPage() {
           }}
         />
       </details>
-      */
 
+
+      {serverId && <button type="button" disabled={loading || deleting || pending?.conversationId === activeId}
+        onClick={() => void loadHistory(activeId)}>Tải lại lịch sử</button>}
+      {loading && <p role="status">Đang tải lịch sử…</p>}
+      {historyError && <p role="alert">{historyError}</p>}
       <div className="chat-panel">
         <MessageList
-          messages={messages}
+          messages={messages ?? []}
           busy={pending !== null}
           onRetry={(id) => {
             retry(activeId, id);
@@ -67,17 +76,17 @@ function ChatPage() {
             </p>
 
             <button type="button" onClick={stop}>
-              Dừng
+              Dừng chờ
             </button>
           </div>
         )}
 
         <ChatInput
-          value={draft}
+          value={draft ?? ""}
           onChange={(value) => setDraft(activeId, value)}
           onSend={handleSend}
-          disabled={pending?.conversationId === activeId}
-          sendDisabled={pending !== null}
+          disabled={pending?.conversationId === activeId || loading || deleting}
+          sendDisabled={pending !== null || loading || deleting || Boolean(historyError)}
         />
       </div>
     </section>
