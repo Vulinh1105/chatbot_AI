@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.model.chat_message import ChatMessageRole, ChatMessageStatus
+
 
 class ChatCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
@@ -9,6 +11,10 @@ class ChatCreate(BaseModel):
 
 class ChatUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
+
+
+class ChatAskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=5000)
 
 
 class ChatResponse(BaseModel):
@@ -19,3 +25,35 @@ class ChatResponse(BaseModel):
     title: str
     created_at: datetime
     updated_at: datetime
+
+
+class ChatMessageSource(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    source: str
+    pages: list[int] = Field(default_factory=list)
+
+
+class ChatMessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    chat_id: int
+    role: ChatMessageRole
+    content: str
+    sources: list[ChatMessageSource] = Field(default_factory=list)
+    status: ChatMessageStatus
+    created_at: datetime
+
+
+class ChatListResponse(BaseModel):
+    items: list[ChatResponse]
+    next_cursor: int | None = None
+    has_more: bool
+
+
+class ChatHistoryResponse(BaseModel):
+    chat: ChatResponse
+    messages: list[ChatMessageResponse]
+    next_cursor: int | None = None
+    has_more: bool

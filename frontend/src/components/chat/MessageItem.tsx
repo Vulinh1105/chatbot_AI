@@ -9,6 +9,7 @@ const roleLabels = { user: "Bạn", assistant: "DocBot", system: "Hệ thống" 
 function MessageItem({ message, onRetry, busy = false }: { message: Message; onRetry?: (id: string) => void; busy?: boolean }) {
   const conversationId = useChatStore((state) => state.activeConversationId);
 
+  const serverId = useChatStore((state) => state.serverIds[conversationId]);
   const showFeedback = message.role === "assistant" && message.status !== "waiting" && message.status !== "streaming" && message.status !== "error";
 
   return (
@@ -30,9 +31,18 @@ function MessageItem({ message, onRetry, busy = false }: { message: Message; onR
           ) : (
             <p className="chat-message-text">{message.content}</p>
           )}
+          {message.sources && message.sources.length > 0 && (
+            <ul aria-label="Nguồn tham khảo">
+              {message.sources.map((source, index) => (
+                <li key={`${source.source}-${index}`}>
+                  {source.source}{source.pages.length > 0 ? ` — trang ${source.pages.join(", ")}` : ""}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        {showFeedback && conversationId && (
-          <ChatFeedbackButtons messageId={message.id} conversationId={conversationId} />
+        {showFeedback && serverId && (
+          <ChatFeedbackButtons messageId={message.id} conversationId={serverId} />
         )}
       </article>
     </li>
