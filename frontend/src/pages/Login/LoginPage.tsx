@@ -2,14 +2,14 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
-import { login as loginApi } from "../../services/authService";
 import axios from "axios";
+import { getCurrentUser, login as loginApi } from "../../services/authService";
 
 function LoginPage() {
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
 
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -20,7 +20,7 @@ function LoginPage() {
 
     setError("");
 
-    if (!email.trim() || !password) {
+    if (!username.trim() || !password) {
       setError("Vui lòng nhập đầy đủ email và mật khẩu.");
       return;
     }
@@ -29,18 +29,15 @@ function LoginPage() {
 
     try {
       const response = await loginApi({
-        username: email.trim(),
+        username: username.trim(),
         password,
       });
 
-      login(
-        {
-          id: "",
-          email: email.trim(),
-          name: email.trim(),
-        },
-        response.access_token
-      );
+      localStorage.setItem("accessToken", response.access_token);
+
+      const user = await getCurrentUser();
+
+      login(user, response.access_token);
 
       navigate("/chat", { replace: true });
     } catch (error) {
@@ -67,15 +64,20 @@ function LoginPage() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="username">
+              Email hoặc tên đăng nhập
+            </label>
 
             <input
-              id="email"
-              type="email"
-              placeholder="Nhập email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              id="username"
+              name="username"
+              type="text"
+              placeholder="Nhập email hoặc tên đăng nhập"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="username"
               disabled={loading}
+              required
             />
           </div>
 
