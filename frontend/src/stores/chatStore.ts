@@ -253,16 +253,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           initialized: true,
         };
       });
-
-      // Tải lịch sử của conversation đang active
-      const activeId = get().activeConversationId;
-
-      if (
-        activeId !== LOCAL_CONVERSATION_ID &&
-        get().serverIds[activeId]
-      ) {
-        void get().loadHistory(activeId);
-      }
+      
     } catch (error) {
       if (
         version === epoch &&
@@ -303,8 +294,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
         cursor = page.next_cursor;
       } while (cursor !== undefined);
       set((current) => ({
-        messagesByConversation: { ...current.messagesByConversation, [id]: [...new Map(messages.map((message) => [message.id, message])).values()] },
-        loadedHistory: { ...current.loadedHistory, [id]: true },
+        messagesByConversation: {
+          ...current.messagesByConversation,
+          [id]: [
+            ...new Map(
+              messages.map((message) => [message.id, message])
+            ).values()
+          ]
+        },
+        loadedHistory: {
+          ...current.loadedHistory,
+          [id]: true
+        },
+        historyErrors: {
+          ...current.historyErrors,
+          [id]: "",
+        },
       }));
     } catch (error) {
       if (version === epoch && get().conversations.some((chat) => chat.id === id)) set((current) => ({ historyErrors: { ...current.historyErrors, [id]: errorText(error) } }));
@@ -367,9 +372,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return id;
   },
   selectConversation: (id) => {
-    if (!get().conversations.some((chat) => chat.id === id) || get().deleting[id]) return;
-    set({ activeConversationId: id });
-    if (!get().loadedHistory[id] && get().messagesByConversation[id].length === 0) void get().loadHistory(id);
+    const state = get();
+
+    if (
+      !state.conversations.some((chat) => chat.id === id) ||
+      state.deleting[id]
+    ) {
+      return;
+    }
+
+    set((current) => ({
+      activeConversationId: id,
+      historyErrors: {
+        ...current.historyErrors,
+        [id]: "",
+      },
+    }));
+
+    if (
+      !state.loadedHistory[id] &&
+      state.messagesByConversation[id].length === 0
+    ) {
+      void get().loadHistory(id);
+    }
   },
   deleteConversation: async (id) => {
     if (!get().conversations.some((chat) => chat.id === id) || get().deleting[id]) return;
