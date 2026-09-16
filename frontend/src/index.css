@@ -1,3 +1,5 @@
+@import "./styles/design-tokens.css";
+
 :root {
   font-family: var(--font-family);
 
@@ -23,12 +25,8 @@ body,
 }
 
 body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-
   background: var(--color-bg);
-
+  color: var(--color-text);
   font-size: var(--font-size-base);
   line-height: var(--line-height-normal);
 }
@@ -54,10 +52,13 @@ a {
    ========================= */
 
 .app-shell {
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+
   display: flex;
 
-  width: 100%;
-  min-height: 100vh;
+  overflow: hidden;
 
   background: var(--color-bg);
 }
@@ -65,332 +66,34 @@ a {
 .app-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
 
   display: flex;
   flex-direction: column;
+
+  overflow: hidden;
 }
 
 .app-content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
 
   padding: var(--space-6);
 
-  overflow-x: hidden;
-}
-
-/* =========================
-   Sidebar
-   ========================= */
-
-.app-sidebar {
-  width: 240px;
-  min-width: 240px;
-  height: 100vh;
-
-  display: flex;
-  flex-direction: column;
-
-  background: var(--color-surface);
-  border-right: 1px solid var(--color-border);
-}
-
-.sidebar-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-
-  height: 72px;
-  padding: 0 var(--space-5);
-
-  border-bottom: 1px solid var(--color-border);
-}
-
-.sidebar-brand-icon {
-  width: 36px;
-  height: 36px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  border-radius: var(--radius-md);
-
-  background: var(--color-primary);
-  color: #ffffff;
-
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
-}
-
-.sidebar-brand-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.sidebar-brand-text strong {
-  color: var(--color-text);
-
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-tight);
-}
-
-.sidebar-brand-text span {
-  margin-top: 3px;
-
-  color: var(--color-text-muted);
-
-  font-size: var(--font-size-sm);
-  line-height: var(--line-height-tight);
-
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-
-  padding: var(--space-4) var(--space-3);
-}
-
-.sidebar-link {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-
-  min-height: 44px;
-  padding: 0 var(--space-3);
-
-  border-radius: var(--radius-md);
-
-  color: var(--color-text-secondary);
-
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
-}
-
-.sidebar-link:hover {
-  background: var(--color-bg);
-  color: var(--color-text);
-}
-
-.sidebar-link.active {
-  background: #eff6ff;
-  color: var(--color-primary);
-  font-weight: var(--font-weight-semibold);
-}
-
-.sidebar-link-icon {
-  width: 20px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  font-size: 16px;
-}
-
-.sidebar-link-text {
-  white-space: nowrap;
-}
-
-.sidebar-footer {
-  margin-top: auto;
-  padding: var(--space-4);
-
-  border-top: 1px solid var(--color-border);
-}
-
-.sidebar-footer-text {
-  color: var(--color-text-muted);
-
-  font-size: 12px;
-}
-
-/* =========================
-   Header
-   ========================= */
-
-.app-header {
-  height: 72px;
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  padding: 0 var(--space-6);
-
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.header-title {
-  min-width: 0;
-}
-
-.header-title h1 {
-  margin: 0;
-
-  color: var(--color-text);
-
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-tight);
-}
-
-.header-title p {
-  margin: 4px 0 0;
-
-  color: var(--color-text-secondary);
-
-  font-size: var(--font-size-sm);
-}
-
-.header-user {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-
-.header-user-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.header-avatar {
-  width: 36px;
-  height: 36px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  border-radius: 50%;
-
-  background: #eff6ff;
-  color: var(--color-primary);
-
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-}
-
-.header-user-text {
-  display: flex;
-  flex-direction: column;
-}
-
-.header-user-name {
-  color: var(--color-text);
-
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-}
-
-.header-user-role {
-  margin-top: 2px;
-
-  color: var(--color-text-muted);
-
-  font-size: 12px;
-}
-
-.header-logout {
-  min-height: 36px;
-  padding: 0 var(--space-3);
-
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.header-logout:hover {
-  border-color: var(--color-error);
-  background: #fef2f2;
-  color: var(--color-error);
-}
-
-/* =========================
-   MAIN CONTENT
-   ========================= */
-
-.app-content {
-  flex: 1;
-  min-width: 0;
-  padding: 24px;
-}
 
 /* =========================
    Responsive
    ========================= */
 
 @media (max-width: 768px) {
-  .app-sidebar {
-    width: 72px;
-    min-width: 72px;
-  }
-
-  .sidebar-brand {
-    justify-content: center;
-    padding: 0;
-  }
-
-  .sidebar-brand-text {
-    display: none;
-  }
-
-  .sidebar-nav {
-    padding: var(--space-3) var(--space-2);
-  }
-
-  .sidebar-link {
-    justify-content: center;
-    padding: 0;
-  }
-
-  .sidebar-link-text {
-    display: none;
-  }
-
-  .sidebar-footer {
-    display: none;
-  }
-
-  .app-header {
-    padding: 0 var(--space-4);
-  }
-
-  .header-title p {
-    display: none;
-  }
-
-  .header-user-text {
-    display: none;
-  }
-
   .app-content {
-    padding: var(--space-4);
+      padding: var(--space-4);
+    }
   }
-}
 
 @media (max-width: 480px) {
   .app-sidebar {

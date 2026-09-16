@@ -11,10 +11,14 @@ export interface ApiChat {
 export interface ApiMessage {
   id: number;
   chat_id: number;
-  role: "user" | "system";
+  role: "user" | "assistant" | "system";
   content: string;
-  sources: { source: string; pages: number[] }[];
-  status: "pending" | "completed" | "error";
+  sources: {
+    source: string;
+    pages: number[];
+    [key: string]: unknown;
+  }[];
+  status: string;
   created_at: string;
 }
 

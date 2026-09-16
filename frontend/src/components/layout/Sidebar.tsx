@@ -1,10 +1,14 @@
 import { NavLink } from "react-router-dom";
+import ConversationList from "../chat/ConversationList";
+import "./Sidebar.css";
 
 function Sidebar() {
   return (
     <aside className="app-sidebar">
       <div className="sidebar-brand">
-        <div className="sidebar-brand-icon">D</div>
+        <div className="sidebar-brand-icon" aria-hidden="true">
+          D
+        </div>
 
         <div className="sidebar-brand-text">
           <strong>DocBot</strong>
@@ -22,7 +26,10 @@ function Sidebar() {
           <span className="sidebar-link-icon" aria-hidden="true">
             💬
           </span>
-          <span className="sidebar-link-text">Chat</span>
+
+          <span className="sidebar-link-text">
+            Chat
+          </span>
         </NavLink>
 
         <NavLink
@@ -34,12 +41,19 @@ function Sidebar() {
           <span className="sidebar-link-icon" aria-hidden="true">
             📄
           </span>
-          <span className="sidebar-link-text">Tài liệu</span>
+
+          <span className="sidebar-link-text">
+            Tài liệu
+          </span>
         </NavLink>
       </nav>
 
+      <div className="sidebar-conversations">
+        <ConversationList />
+      </div>
+
       <div className="sidebar-footer">
-        <span className="sidebar-footer-text">Document Chatbot</span>
+        <span>Document Chatbot</span>
       </div>
     </aside>
   );
