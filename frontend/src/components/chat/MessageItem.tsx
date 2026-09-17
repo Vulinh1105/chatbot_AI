@@ -4,45 +4,171 @@ import { AnswerWithCitations } from "../citations/AnswerCitations";
 import ChatFeedbackButtons from "../ChatFeedbackButtons";
 import { useChatStore } from "../../stores/chatStore";
 
-const roleLabels = { user: "Bạn", assistant: "DocBot", system: "Hệ thống" };
+const roleLabels = {
+  user: "Bạn",
+  assistant: "DocBot",
+  system: "Hệ thống",
+};
 
-function MessageItem({ message, onRetry, busy = false }: { message: Message; onRetry?: (id: string) => void; busy?: boolean }) {
-  const conversationId = useChatStore((state) => state.activeConversationId);
+function MessageItem({
+  message,
+  onRetry,
+  busy = false,
+}: {
+  message: Message;
+  onRetry?: (id: string) => void;
+  busy?: boolean;
+}) {
+  const conversationId = useChatStore(
+    (state) => state.activeConversationId
+  );
 
-  const serverId = useChatStore((state) => state.serverIds[conversationId]);
-  const showFeedback = message.role === "assistant" && message.status !== "waiting" && message.status !== "streaming" && message.status !== "error";
+  const serverId = useChatStore(
+    (state) => state.serverIds[conversationId]
+  );
+
+  const showFeedback =
+    message.role === "assistant" &&
+    message.status !== "waiting" &&
+    message.status !== "streaming" &&
+    message.status !== "error";
+
+  const isUser = message.role === "user";
+  const isAssistant = message.role === "assistant";
 
   return (
-    <li className={`chat-message chat-message-${message.role}`}>
-      <article aria-label={`Tin nhắn từ ${roleLabels[message.role]}`}>
-        <h3 className="chat-message-author">{roleLabels[message.role]}</h3>
+    <li
+      className={`chat-message chat-message-${message.role}`}
+    >
+      <article
+        className="chat-message-card"
+        aria-label={`Tin nhắn từ ${roleLabels[message.role]}`}
+      >
+        <div className="chat-message-header">
+          <div
+            className="chat-message-avatar"
+            aria-hidden="true"
+          >
+            {isUser ? "Bạn" : "D"}
+          </div>
+
+          <span className="chat-message-author">
+            {roleLabels[message.role]}
+          </span>
+        </div>
+
         <div className="chat-message-body">
-          {message.status === "waiting" && <p className="chat-waiting" role="status">Đang trả lời…</p>}
-          {message.status === "streaming" && <p className="chat-waiting" role="status">Đang viết…</p>}
-          {message.status === "stopped" && <p className="chat-waiting" role="status">Đã dừng</p>}
-          {message.status === "error" && (
-            <div className="chat-reply-error">
-              <p role="alert">{message.error ?? "Không thể nhận câu trả lời."}</p>
-              {onRetry && <button type="button" disabled={busy} onClick={() => onRetry(message.id)}>Thử lại</button>}
+          {message.status === "waiting" && (
+            <div
+              className="chat-message-status"
+              role="status"
+            >
+              <span className="chat-message-dots">
+                <span />
+                <span />
+                <span />
+              </span>
+
+              <span>Đang chuẩn bị câu trả lời...</span>
             </div>
           )}
-          {message.role === "assistant" ? (
-            <AnswerWithCitations content={message.content} citations={message.citations} />
+
+          {message.status === "streaming" && (
+            <div
+              className="chat-message-status"
+              role="status"
+            >
+              <span className="chat-message-dots">
+                <span />
+                <span />
+                <span />
+              </span>
+
+              <span>DocBot đang viết...</span>
+            </div>
+          )}
+
+          {message.status === "stopped" && (
+            <p className="chat-message-stopped">
+              Đã dừng tạo câu trả lời
+            </p>
+          )}
+
+          {message.status === "error" && (
+            <div
+              className="chat-reply-error"
+              role="alert"
+            >
+              <div>
+                <strong>Không thể nhận câu trả lời</strong>
+
+                <p>
+                  {message.error ??
+                    "Đã xảy ra lỗi khi xử lý yêu cầu."}
+                </p>
+              </div>
+
+              {onRetry && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onRetry(message.id)}
+                >
+                  Thử lại
+                </button>
+              )}
+            </div>
+          )}
+
+          {isAssistant ? (
+            <AnswerWithCitations
+              content={message.content}
+              citations={message.citations}
+            />
           ) : (
-            <p className="chat-message-text">{message.content}</p>
+            <p className="chat-message-text">
+              {message.content}
+            </p>
           )}
-          {message.sources && message.sources.length > 0 && (
-            <ul aria-label="Nguồn tham khảo">
-              {message.sources.map((source, index) => (
-                <li key={`${source.source}-${index}`}>
-                  {source.source}{source.pages.length > 0 ? ` — trang ${source.pages.join(", ")}` : ""}
-                </li>
-              ))}
-            </ul>
-          )}
+
+          {message.sources &&
+            message.sources.length > 0 && (
+              <div className="chat-message-sources">
+                <span className="chat-sources-label">
+                  Nguồn tham khảo
+                </span>
+
+                <ul>
+                  {message.sources.map(
+                    (source, index) => (
+                      <li
+                        key={`${source.source}-${index}`}
+                      >
+                        <span>
+                          {source.source}
+                        </span>
+
+                        {source.pages.length > 0 && (
+                          <span className="chat-source-pages">
+                            Trang{" "}
+                            {source.pages.join(", ")}
+                          </span>
+                        )}
+                      </li>
+                    )
+                  )}
+                </ul>
+              </div>
+            )}
         </div>
+
         {showFeedback && serverId && (
-          <ChatFeedbackButtons messageId={message.id} conversationId={serverId} />
+          <div className="chat-message-feedback">
+            <ChatFeedbackButtons
+              messageId={message.id}
+              conversationId={serverId}
+            />
+          </div>
         )}
       </article>
     </li>

@@ -14,6 +14,9 @@ function ConversationList({ onSelected }: { onSelected?: () => void }) {
   const reload = useChatStore((state) => state.loadConversations);
   const remove = useChatStore((state) => state.deleteConversation);
 
+  console.log("CONVERSATIONS:", conversations);
+  console.log("ACTIVE ID:", activeId);
+
   return (
     <section className="conversation-panel" aria-label="Hội thoại">
       <button ref={newButtonRef} className="conversation-new" type="button" onClick={() => { create(); onSelected?.(); }}>
