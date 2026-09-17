@@ -7,5 +7,23 @@
     "error": null,
     "started_at": "2026-09-17T00:29:10.244090+00:00",
     "finished_at": "2026-09-17T00:29:26.143124+00:00"
+  },
+  "38": {
+    "document_id": 38,
+    "status": "failed",
+    "chunk_count": 0,
+    "strategy": "semantic",
+    "error": "Không thể đọc file DOCX '38': file '/app/backend/documents/3/38' is not a Word file, content type is 'application/vnd.openxmlformats-officedocument.themeManager+xml'",
+    "started_at": "2026-09-17T00:43:22.344948+00:00",
+    "finished_at": "2026-09-17T00:43:22.408664+00:00"
+  },
+  "39": {
+    "document_id": 39,
+    "status": "indexed",
+    "chunk_count": 3,
+    "strategy": "semantic",
+    "error": null,
+    "started_at": "2026-09-17T00:43:55.597341+00:00",
+    "finished_at": "2026-09-17T00:44:07.561509+00:00"
   }
 }

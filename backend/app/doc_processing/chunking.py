@@ -58,6 +58,11 @@ def _qdrant_url() -> str:
         f"http://{os.getenv('QDRANT_HOST', 'localhost')}:{os.getenv('QDRANT_PORT', '6333')}",
     )
 
+
+def _qdrant_api_key() -> str | None:
+    value = os.getenv("QDRANT_API_KEY")
+    return None if value in {None, "", "None", "null"} else value
+
 # Nhiều request upload có thể chạy song song (FastAPI BackgroundTasks), nếu
 # không khoá ghi file, 2 tiến trình có thể ghi đè lẫn nhau -> mất dữ liệu.
 # Lock này bảo vệ trong phạm vi 1 worker process của Python; nếu G6 deploy
@@ -246,7 +251,7 @@ def load_all_chunks() -> list[dict]:
     try:
         from qdrant_client import QdrantClient
 
-        client = QdrantClient(url=_qdrant_url(), api_key=os.getenv("QDRANT_API_KEY"))
+        client = QdrantClient(url=_qdrant_url(), api_key=_qdrant_api_key())
         if not client.collection_exists(QDRANT_COLLECTION):
             return []
         points, _ = client.scroll(QDRANT_COLLECTION, limit=10000, with_payload=True, with_vectors=False)
@@ -265,7 +270,7 @@ def load_all_chunks() -> list[dict]:
 def _delete_qdrant_document(document_id: int) -> None:
     from qdrant_client import QdrantClient, models
 
-    client = QdrantClient(url=_qdrant_url(), api_key=os.getenv("QDRANT_API_KEY"))
+    client = QdrantClient(url=_qdrant_url(), api_key=_qdrant_api_key())
     if client.collection_exists(QDRANT_COLLECTION):
         client.delete(
             QDRANT_COLLECTION,
