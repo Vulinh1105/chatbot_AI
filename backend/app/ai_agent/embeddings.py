@@ -15,6 +15,13 @@ COLLECTION_NAME = os.getenv(
     "chatbot_documents_v2")
 
 
+def _qdrant_url() -> str:
+    return os.getenv(
+        "QDRANT_URL",
+        f"http://{os.getenv('QDRANT_HOST', 'localhost')}:{os.getenv('QDRANT_PORT', '6333')}",
+    )
+
+
 # hàm tạo id ổn định cho từng chunk: kiểm tra chunk tồn tại
 def _point_id(document: Document) -> str:
     chunk_id = document.metadata.get("chunk_id")
@@ -24,14 +31,15 @@ def _point_id(document: Document) -> str:
 # chunk -> vectordb
 def create_vector_db(docs: list[Document]) -> QdrantVectorStore:
     embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-    client = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"))
+    qdrant_url = _qdrant_url()
+    client = QdrantClient(url=qdrant_url, api_key=os.getenv("QDRANT_API_KEY"))
     ids = [_point_id(doc) for doc in docs]
 
     # qdrant collection đã tồn tại
     if client.collection_exists(COLLECTION_NAME):
         store = QdrantVectorStore.from_existing_collection(
             embedding=embeddings, collection_name=COLLECTION_NAME,
-            url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"),
+            url=qdrant_url, api_key=os.getenv("QDRANT_API_KEY"),
         )
         existing = client.retrieve(COLLECTION_NAME, ids=ids, with_payload=False, with_vectors=False)
         existing_ids = {str(point.id) for point in existing}
@@ -43,6 +51,6 @@ def create_vector_db(docs: list[Document]) -> QdrantVectorStore:
     # qdrant chưa tồn tại
     return QdrantVectorStore.from_documents(
         documents=docs, embedding=embeddings, ids=ids,
-        url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"),
+        url=qdrant_url, api_key=os.getenv("QDRANT_API_KEY"),
         collection_name=COLLECTION_NAME, batch_size=5,
     )
