@@ -10,9 +10,7 @@ interface DocumentListProps {
   refreshKey?: number;
 }
 
-const formatFileSize = (
-  bytes: number
-): string => {
+const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) {
     return `${bytes} B`;
   }
@@ -21,21 +19,13 @@ const formatFileSize = (
     return `${(bytes / 1024).toFixed(1)} KB`;
   }
 
-  return `${(
-    bytes /
-    (1024 * 1024)
-  ).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const getDocumentIcon = (
-  document: Document
-): string => {
-  const type =
-    document.content_type
-      ?.toLowerCase() ?? "";
+const getDocumentIcon = (document: Document): string => {
+  const type = document.content_type?.toLowerCase() ?? "";
 
-  const name =
-    document.original_filename.toLowerCase();
+  const name = document.original_filename.toLowerCase();
 
   if (
     type.includes("pdf") ||
@@ -62,11 +52,8 @@ const getDocumentIcon = (
   return "📄";
 };
 
-const getDocumentType = (
-  document: Document
-): string => {
-  const name =
-    document.original_filename.toLowerCase();
+const getDocumentType = (document: Document): string => {
+  const name = document.original_filename.toLowerCase();
 
   if (name.endsWith(".pdf")) {
     return "PDF";
@@ -87,9 +74,7 @@ const getDocumentType = (
   return "FILE";
 };
 
-const getErrorMessage = (
-  error: unknown
-): string => {
+const getErrorMessage = (error: unknown): string => {
   const axiosError = error as {
     response?: {
       data?: {
@@ -99,8 +84,7 @@ const getErrorMessage = (
     message?: string;
   };
 
-  const detail =
-    axiosError?.response?.data?.detail;
+  const detail = axiosError?.response?.data?.detail;
 
   if (typeof detail === "string") {
     return detail;
@@ -115,8 +99,8 @@ const getErrorMessage = (
           "msg" in item
         ) {
           return String(
-            (item as { msg?: unknown })
-              .msg ?? "Dữ liệu không hợp lệ"
+            (item as { msg?: unknown }).msg ??
+              "Dữ liệu không hợp lệ"
           );
         }
 
@@ -170,8 +154,7 @@ function DocumentList({
       setIsLoading(true);
       setError("");
 
-      const data =
-        await getDocuments();
+      const data = await getDocuments();
 
       setDocuments(data);
     } catch (error) {
@@ -184,8 +167,43 @@ function DocumentList({
     }
   };
 
+  /*
+   * Load documents when refreshKey changes.
+   *
+   * Không gọi fetchDocuments() trực tiếp trong useEffect
+   * vì fetchDocuments() chứa setState và ESLint
+   * react-hooks/set-state-in-effect sẽ báo lỗi.
+   */
   useEffect(() => {
-    void fetchDocuments();
+    let cancelled = false;
+
+    const loadDocuments = async () => {
+      try {
+        const data = await getDocuments();
+
+        if (!cancelled) {
+          setDocuments(data);
+          setError("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setError(
+            getErrorMessage(error) ||
+              "Không thể tải danh sách tài liệu."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadDocuments();
+
+    return () => {
+      cancelled = true;
+    };
   }, [refreshKey]);
 
   const openDeleteModal = (
@@ -257,8 +275,7 @@ function DocumentList({
         <div
           style={{
             display: "flex",
-            justifyContent:
-              "space-between",
+            justifyContent: "space-between",
             alignItems: "center",
             marginBottom: "16px",
           }}
@@ -276,8 +293,7 @@ function DocumentList({
 
             <p
               style={{
-                margin:
-                  "5px 0 0",
+                margin: "5px 0 0",
                 color: "#64748b",
                 fontSize: "14px",
               }}
@@ -293,12 +309,10 @@ function DocumentList({
             }
             disabled={isLoading}
             style={{
-              border:
-                "1px solid #e2e8f0",
+              border: "1px solid #e2e8f0",
               background: "#fff",
               borderRadius: "9px",
-              padding:
-                "8px 12px",
+              padding: "8px 12px",
               color: "#475569",
               cursor: "pointer",
               fontWeight: 500,
@@ -328,8 +342,7 @@ function DocumentList({
               padding: "16px",
               borderRadius: "12px",
               background: "#fef2f2",
-              border:
-                "1px solid #fecaca",
+              border: "1px solid #fecaca",
               color: "#dc2626",
             }}
           >
@@ -362,8 +375,7 @@ function DocumentList({
               style={{
                 padding: "42px 20px",
                 textAlign: "center",
-                border:
-                  "1px dashed #cbd5e1",
+                border: "1px dashed #cbd5e1",
                 borderRadius: "14px",
                 background: "#f8fafc",
               }}
@@ -379,8 +391,7 @@ function DocumentList({
 
               <h4
                 style={{
-                  margin:
-                    "0 0 6px",
+                  margin: "0 0 6px",
                   fontSize: "17px",
                   color: "#334155",
                 }}
@@ -406,8 +417,7 @@ function DocumentList({
             <div
               style={{
                 display: "flex",
-                flexDirection:
-                  "column",
+                flexDirection: "column",
                 gap: "10px",
               }}
             >
@@ -417,35 +427,24 @@ function DocumentList({
                     key={document.id}
                     style={{
                       display: "flex",
-                      alignItems:
-                        "center",
+                      alignItems: "center",
                       gap: "14px",
-                      padding:
-                        "15px 16px",
-                      background:
-                        "#fff",
-                      border:
-                        "1px solid #e2e8f0",
-                      borderRadius:
-                        "12px",
+                      padding: "15px 16px",
+                      background: "#fff",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "12px",
                     }}
                   >
                     <div
                       style={{
                         width: "44px",
                         height: "44px",
-                        borderRadius:
-                          "10px",
-                        background:
-                          "#f1f5f9",
-                        display:
-                          "flex",
-                        alignItems:
-                          "center",
-                        justifyContent:
-                          "center",
-                        fontSize:
-                          "22px",
+                        borderRadius: "10px",
+                        background: "#f1f5f9",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "22px",
                         flexShrink: 0,
                       }}
                     >
@@ -463,14 +462,10 @@ function DocumentList({
                       <div
                         style={{
                           fontWeight: 600,
-                          color:
-                            "#1e293b",
-                          overflow:
-                            "hidden",
-                          textOverflow:
-                            "ellipsis",
-                          whiteSpace:
-                            "nowrap",
+                          color: "#1e293b",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
                         }}
                         title={
                           document.original_filename
@@ -483,17 +478,12 @@ function DocumentList({
 
                       <div
                         style={{
-                          display:
-                            "flex",
-                          flexWrap:
-                            "wrap",
+                          display: "flex",
+                          flexWrap: "wrap",
                           gap: "8px",
-                          marginTop:
-                            "5px",
-                          color:
-                            "#64748b",
-                          fontSize:
-                            "13px",
+                          marginTop: "5px",
+                          color: "#64748b",
+                          fontSize: "13px",
                         }}
                       >
                         <span>
@@ -533,24 +523,15 @@ function DocumentList({
                       style={{
                         width: "40px",
                         height: "40px",
-                        border:
-                          "none",
-                        borderRadius:
-                          "9px",
-                        background:
-                          "#fef2f2",
-                        color:
-                          "#dc2626",
-                        cursor:
-                          "pointer",
-                        fontSize:
-                          "18px",
-                        display:
-                          "flex",
-                        alignItems:
-                          "center",
-                        justifyContent:
-                          "center",
+                        border: "none",
+                        borderRadius: "9px",
+                        background: "#fef2f2",
+                        color: "#dc2626",
+                        cursor: "pointer",
+                        fontSize: "18px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
                         flexShrink: 0,
                       }}
                     >
@@ -572,8 +553,7 @@ function DocumentList({
             zIndex: 1001,
             background: "#166534",
             color: "#fff",
-            padding:
-              "14px 18px",
+            padding: "14px 18px",
             borderRadius: "10px",
             boxShadow:
               "0 10px 30px rgba(0,0,0,0.15)",
