@@ -14,9 +14,6 @@ function ConversationList({ onSelected }: { onSelected?: () => void }) {
   const reload = useChatStore((state) => state.loadConversations);
   const remove = useChatStore((state) => state.deleteConversation);
 
-  console.log("CONVERSATIONS:", conversations);
-  console.log("ACTIVE ID:", activeId);
-
   return (
     <section className="conversation-panel" aria-label="Hội thoại">
       <button ref={newButtonRef} className="conversation-new" type="button" onClick={() => { create(); onSelected?.(); }}>
@@ -34,9 +31,19 @@ function ConversationList({ onSelected }: { onSelected?: () => void }) {
               aria-current={activeId === conversation.id ? "true" : undefined}
               disabled={deleting[conversation.id]}
               title={conversation.title}
-              onClick={() => { select(conversation.id); onSelected?.(); }}
+              aria-label={`Mở hội thoại: ${conversation.title}`}
+              onClick={() => {
+                select(conversation.id);
+                onSelected?.();
+              }}
             >
-              {conversation.title}
+              <span className="conversation-title">
+                {conversation.title}
+              </span>
+
+              <span className="conversation-mobile-icon" aria-hidden="true">
+                {conversation.title.charAt(0).toUpperCase()}
+              </span>
             </button>
             <button
               type="button"
