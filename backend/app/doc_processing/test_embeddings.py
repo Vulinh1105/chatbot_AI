@@ -23,17 +23,16 @@ print(f"Status     : {info.status}")
 
 points, next_page = client.scroll(
     collection_name=COLLECTION_NAME,
-    limit=3,
+    limit=10,
     with_payload=True,
-    with_vectors=True,
+    with_vectors=False,
 )
 
 print("\n" + "=" * 80)
-print("DATA + VECTOR")
+print("DATA")
 print("=" * 80)
 
 for i, point in enumerate(points, start=1):
-
     print(f"\n--- POINT {i} ---")
 
     print("ID:")
@@ -41,25 +40,3 @@ for i, point in enumerate(points, start=1):
 
     print("\nPAYLOAD:")
     print(point.payload)
-
-    print("\nVECTOR:")
-
-    if point.vector is None:
-        print("❌ Không có vector")
-
-    elif isinstance(point.vector, dict):
-        for name, vector in point.vector.items():
-            print(
-                f"{name}: dimension = {len(vector)}"
-            )
-            print(
-                f"first 5 values = {vector[:5]}"
-            )
-
-    else:
-        print(
-            f"dimension = {len(point.vector)}"
-        )
-        print(
-            f"first 5 values = {point.vector[:5]}"
-        )

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,7 +5,13 @@ from typing import Any, Callable, Protocol
 
 from langchain_core.documents import Document
 
-from .evaluate_retrieval import EvalCase, run_comparison
+# THAY ĐỔI:
+# Không import EvalCase, run_comparison từ evaluate_retrieval.py nữa.
+# evaluate_retrieval.py hiện tại là file kiểm tra/đánh giá Qdrant,
+# không phải dependency của runtime RAG hỏi đáp.
+#
+# from .evaluate_retrieval import EvalCase, run_comparison
+
 from .graph import GraphDependencies, build_rag_graph
 from .hybrid_retrieval import HybridRetriever
 from .prompt import generate_answer
@@ -14,32 +19,17 @@ from .retrieval import QdrantRetriever, Retriever
 from .validation import check_query
 
 
+# Represents one completed conversation turn. -> lưu: query, answer, rewritten_query, context
 @dataclass
 class Turn:
-    """
-    Represents one completed conversation turn.
-    """
-
     query: str
     answer: str
     rewritten_query: str | None = None
     context: list[Document] = field(default_factory=list)
 
 
-# Conversation store interface
+# luu lịch sử hội thoại
 class ConversationStore(Protocol):
-    """
-    Contract for conversation history storage.
-
-    Any storage implementation must provide:
-        get(session_id)
-        append(session_id, turn)
-
-    Examples:
-        - InMemoryConversationStore
-        - RedisConversationStore
-        - PostgreSQLConversationStore
-    """
 
     def get(self, session_id: str) -> list[Turn]:
         raise NotImplementedError
@@ -48,7 +38,7 @@ class ConversationStore(Protocol):
         raise NotImplementedError
 
 
-
+# lưu lịch sử chat trong RAM
 class InMemoryConversationStore:
     """
     Stores conversation history in application memory.
@@ -65,11 +55,13 @@ class InMemoryConversationStore:
     def __init__(self) -> None:
         self._turns: dict[str, list[Turn]] = {}
 
+    # lấy history của session, nếu session chưa tồn tại -> []
     def get(self, session_id: str) -> list[Turn]:
         return list(
             self._turns.get(session_id, [])
         )
 
+    # thêm 1 conversation turn vào session, nếu session chưa tồn tại -> tạo list mới
     def append(
         self,
         session_id: str,
@@ -81,10 +73,10 @@ class InMemoryConversationStore:
         self._turns[session_id].append(turn)
 
 
-# RAG Pipeline
-
+# RAG Pipeline -> lắp ráp -> xây LangGraph
 class RAGPipeline:
 
+    # inject các component
     def __init__(
         self,
         *,
@@ -99,6 +91,7 @@ class RAGPipeline:
             str,
         ] = generate_answer,
         store: ConversationStore | None = None,
+        # lấy check_query trực tiếp từ validation.py
         query_checker: Callable[
             [str],
             Any,
@@ -130,7 +123,7 @@ class RAGPipeline:
             else InMemoryConversationStore()
         )
 
-        # built LangGraph
+        # create GraphDependencies -> đóng gói all dependency đưa sang graph.py
         dependencies = GraphDependencies(
             retriever=self.retriever,
             rerank=rerank,
@@ -140,6 +133,7 @@ class RAGPipeline:
             turn_factory=Turn,
         )
 
+        # tạo langgraph workflow từ các dependency vừa cbi
         self.graph = build_rag_graph(
             dependencies
         )
@@ -178,7 +172,6 @@ class RAGPipeline:
             "route",
             "refusal_reason",
             "retrieval_quality",
-            "guardrail_reason",
             "retrieved_chunks",
             "reranked_chunks",
         )
@@ -189,18 +182,16 @@ class RAGPipeline:
         }
 
 
-    # Offline retrieval evaluation
-    def evaluate_retrieval(
-        self,
-        eval_set: list[EvalCase],
-        top_k: int = 3,
-    ) -> tuple[dict, dict]:
-
-        return run_comparison(
-            self.retriever,
-            eval_set=eval_set,
-            top_k=top_k,
-        )
+# THAY ĐỔI:
+# Đã bỏ hàm evaluate_retrieval() khỏi RAGPipeline.
+#
+# Lý do:
+# - Hàm này chỉ phục vụ offline retrieval evaluation.
+# - evaluate_retrieval.py hiện tại không còn định nghĩa EvalCase/run_comparison.
+# - Runtime hỏi đáp không cần gọi chức năng evaluation.
+#
+# Phần evaluation nên được chạy độc lập bằng file evaluate_retrieval.py
+# hoặc test evaluation riêng, không nối vào runtime RAG.
 
 
 # 7. Application-level pipeline instance
@@ -222,7 +213,7 @@ def get_pipeline() -> RAGPipeline:
     return _pipeline
 
 
-# 8. Public entry point
+# 8. Public entry point - function mà API/ application có the gọi
 def run_pipeline(
     query: str,
     session_id: str = "default",

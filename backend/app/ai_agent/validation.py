@@ -14,8 +14,8 @@ NO_EVIDENCE_PREFIXES = (
     "không có thông tin",
 )
 
-
-# kiểm tra input
+# 1. check input của user
+# định nghĩa ctruc và kqua trả về -> check_query()
 @dataclass(frozen=True)
 class QueryCheckResult:
     allowed: bool
@@ -35,21 +35,25 @@ _OUT_OF_SCOPE_PATTERNS = (
 )
 
 
-# kiểm tra
+# 1. kiểm tra
+
+# khai báo hàm
 def check_query(
     query: str,
     *,
     max_length: int = 2_000
 ) -> QueryCheckResult:
 
+    # check 1: query rỗng?
     if not isinstance(query, str) or not query.strip():
         return QueryCheckResult(False, "empty_query")
 
     normalized = " ".join(query.split())
 
+    # check 2: too longg?
     if len(normalized) > max_length:
         return QueryCheckResult(False, "query_too_long")
-
+    # check 3
     if any(
         re.search(
             pattern,
@@ -60,6 +64,7 @@ def check_query(
     ):
         return QueryCheckResult(False, "unsafe_or_out_of_scope")
 
+    # check 4: ngoài phạm vi?
     if any(
         re.search(
             pattern,
@@ -70,6 +75,7 @@ def check_query(
     ):
         return QueryCheckResult(False, "out_of_scope")
 
+    # check 5: vô nghĩa?
     if not re.search(
         r"[A-Za-zÀ-ỹà-ỹ0-9]",
         normalized
@@ -79,7 +85,8 @@ def check_query(
     return QueryCheckResult(True)
 
 
-# check evidence
+# 2. check context/evidence + tạo citation
+# check evidence/ context đầu vào có ton tại?
 def has_evidence(
     chunks: List[Document]
 ) -> bool:
@@ -98,7 +105,7 @@ def has_evidence(
     return False
 
 
-# get source metadata
+# get source metadata  ==> tạo citation sau này
 def get_source_metadata(
     chunk: Document
 ) -> Dict[str, Any]:
@@ -266,6 +273,7 @@ def format_citations(
     return "\n".join(lines)
 
 
+# 3. check output của LLM
 # hàm nhan diện no-evidence
 def is_no_evidence_answer(
     answer: str
