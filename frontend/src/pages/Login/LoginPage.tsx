@@ -16,6 +16,7 @@ function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -27,7 +28,9 @@ function LoginPage() {
     setError("");
 
     if (!username.trim() || !password) {
-      setError("Vui lòng nhập đầy đủ email và mật khẩu.");
+      setError(
+        "Vui lòng nhập đầy đủ email và mật khẩu."
+      );
       return;
     }
 
@@ -62,10 +65,21 @@ function LoginPage() {
   };
 
   return (
-    <main className="auth-page">
+    <main
+      className={`auth-page ${
+        showPassword
+          ? "password-focus-mode"
+          : ""
+      }`}
+    >
+      <div className="auth-background" />
+
       <section className="auth-card">
         <header className="auth-header">
-          <div className="auth-logo" aria-hidden="true">
+          <div
+            className="auth-logo"
+            aria-hidden="true"
+          >
             D
           </div>
 
@@ -80,44 +94,96 @@ function LoginPage() {
           onSubmit={handleSubmit}
           className="auth-form"
         >
+          {/* USERNAME */}
+
           <div className="auth-form-group">
             <label htmlFor="username">
               Email hoặc tên đăng nhập
             </label>
 
-            <input
-              id="username"
-              name="username"
-              type="text"
-              placeholder="Nhập email hoặc tên đăng nhập"
-              value={username}
-              onChange={(event) =>
-                setUsername(event.target.value)
-              }
-              autoComplete="username"
-              disabled={loading}
-              required
-            />
+            <div className="auth-input-wrapper">
+              <span
+                className="auth-input-icon"
+                aria-hidden="true"
+              >
+                @
+              </span>
+
+              <input
+                id="username"
+                name="username"
+                type="text"
+                placeholder="Nhập email hoặc tên đăng nhập"
+                value={username}
+                onChange={(event) =>
+                  setUsername(
+                    event.target.value
+                  )
+                }
+                autoComplete="username"
+                disabled={loading}
+                required
+              />
+            </div>
           </div>
 
-          <div className="auth-form-group">
+          {/* PASSWORD */}
+
+          <div className="auth-form-group password-group">
             <label htmlFor="password">
               Mật khẩu
             </label>
 
-            <input
-              id="password"
-              name="password"
-              type="password"
-              placeholder="Nhập mật khẩu"
-              value={password}
-              onChange={(event) =>
-                setPassword(event.target.value)
-              }
-              autoComplete="current-password"
-              disabled={loading}
-              required
-            />
+            <div className="auth-password-wrapper">
+              <span
+                className="auth-input-icon"
+                aria-hidden="true"
+              >
+                🔒
+              </span>
+
+              <input
+                id="password"
+                name="password"
+                type={
+                  showPassword
+                    ? "text"
+                    : "password"
+                }
+                placeholder="Nhập mật khẩu"
+                value={password}
+                onChange={(event) =>
+                  setPassword(
+                    event.target.value
+                  )
+                }
+                autoComplete="current-password"
+                disabled={loading}
+                required
+              />
+
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() =>
+                  setShowPassword(
+                    (previous) => !previous
+                  )
+                }
+                disabled={loading}
+                aria-label={
+                  showPassword
+                    ? "Ẩn mật khẩu"
+                    : "Hiển thị mật khẩu"
+                }
+              >
+                <span>
+                  {showPassword
+                    ? "◉"
+                    : "◉"}
+                </span>
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -136,7 +202,7 @@ function LoginPage() {
           >
             {loading
               ? "Đang đăng nhập..."
-              : "Đăng nhập"}
+              : "Đăng nhập →"}
           </button>
         </form>
 
