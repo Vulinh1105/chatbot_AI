@@ -25,5 +25,23 @@
     "error": null,
     "started_at": "2026-09-17T00:43:55.597341+00:00",
     "finished_at": "2026-09-17T00:44:07.561509+00:00"
+  },
+  "40": {
+    "document_id": 40,
+    "status": "indexed",
+    "chunk_count": 8,
+    "strategy": "semantic",
+    "error": null,
+    "started_at": "2026-09-17T01:03:25.508065+00:00",
+    "finished_at": "2026-09-17T01:03:41.954786+00:00"
+  },
+  "41": {
+    "document_id": 41,
+    "status": "indexed",
+    "chunk_count": 20,
+    "strategy": "semantic",
+    "error": null,
+    "started_at": "2026-09-18T14:30:05.781666+00:00",
+    "finished_at": "2026-09-18T14:30:33.230844+00:00"
   }
 }

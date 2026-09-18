@@ -121,15 +121,19 @@ def _split_recursive_paragraph(text: str, max_chars: int = 500) -> list[str]:
         pieces.append(buffer)
     return pieces
 
-def _split_semantic(text: str) -> list[str]:
+def _split_semantic(text: str, max_chars: int = 500) -> list[str]:
     """
     Chiến lược Semantic Chunking:
     Chia văn bản dựa trên sự thay đổi ngữ nghĩa giữa các câu,
-    thay vì chỉ dựa trên số lượng ký tự.
+    thay vì chỉ dựa trên số lượng ký tự. `max_chars` là trần cứng để
+    một nhóm câu không trở thành chunk quá dài khi các câu có chủ đề gần nhau.
     """
     import math
 
     from langchain_openai import OpenAIEmbeddings
+
+    if max_chars <= 0:
+        raise ValueError("max_chars phải lớn hơn 0.")
 
     sentences = [
         sentence.strip()
@@ -137,7 +141,15 @@ def _split_semantic(text: str) -> list[str]:
         if sentence.strip()
     ]
     if len(sentences) <= 1:
-        return sentences
+        return [
+            piece
+            for sentence in sentences
+            for piece in (
+                [sentence]
+                if len(sentence) <= max_chars
+                else _split_fixed_overlap(sentence, chunk_size=max_chars, overlap=0)
+            )
+        ]
 
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     vectors = embeddings.embed_documents(sentences)
@@ -168,14 +180,21 @@ def _split_semantic(text: str) -> list[str]:
     chunks = []
     current_chunk = [sentences[0]]
     for index, sentence in enumerate(sentences[1:]):
-        current_chunk.append(sentence)
-        if distances[index] >= threshold:
+        candidate = " ".join(current_chunk + [sentence])
+        if distances[index] >= threshold or len(candidate) > max_chars:
             chunks.append(" ".join(current_chunk))
             current_chunk = []
+        current_chunk.append(sentence)
     if current_chunk:
         chunks.append(" ".join(current_chunk))
 
-    return chunks
+    bounded_chunks = []
+    for chunk in chunks:
+        if len(chunk) <= max_chars:
+            bounded_chunks.append(chunk)
+        else:
+            bounded_chunks.extend(_split_fixed_overlap(chunk, chunk_size=max_chars, overlap=0))
+    return bounded_chunks
 
 
 _STRATEGIES = {
