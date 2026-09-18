@@ -301,6 +301,36 @@ def _delete_qdrant_document(document_id: int) -> None:
         )
 
 
+def _document_points_exist(document_id: int, expected_count: int) -> bool:
+    """Xác nhận Qdrant đã ghi đủ points sau khi client báo timeout."""
+    if expected_count <= 0:
+        return True
+    try:
+        from qdrant_client import QdrantClient, models
+
+        client = QdrantClient(url=_qdrant_url(), api_key=_qdrant_api_key())
+        if not client.collection_exists(QDRANT_COLLECTION):
+            return False
+        result = client.count(
+            QDRANT_COLLECTION,
+            count_filter=models.Filter(
+                must=[models.FieldCondition(
+                    key="metadata.document_id",
+                    match=models.MatchValue(value=document_id),
+                )]
+            ),
+            exact=True,
+        )
+        return result.count == expected_count
+    except Exception as exc:
+        logger.warning(
+            "Không thể xác nhận points sau timeout cho document_id=%s: %s",
+            document_id,
+            exc,
+        )
+        return False
+
+
 def save_chunks(chunks: list[dict], document_id: int) -> str:
     """
     Xóa các point cũ của tài liệu rồi embedding và upsert chunk mới vào Qdrant.
@@ -320,7 +350,17 @@ def save_chunks(chunks: list[dict], document_id: int) -> str:
             for chunk in chunks
         ]
         if docs:
-            create_vector_db(docs)
+            try:
+                create_vector_db(docs)
+            except Exception:
+                if not _document_points_exist(document_id, len(chunks)):
+                    raise
+                logger.warning(
+                    "Qdrant báo lỗi ghi nhưng đã có đủ %s points cho document_id=%s; "
+                    "tiếp tục pipeline.",
+                    len(chunks),
+                    document_id,
+                )
         logger.info(
             "Đã index %s chunk cho document_id=%s vào collection '%s'.",
             len(chunks), document_id, QDRANT_COLLECTION,
