@@ -44,6 +44,9 @@ services:
       PROJECT_NAME: ${PROJECT_NAME:-ThinkDocu}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env before starting Docker Compose}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env before starting Docker Compose}
+      QDRANT_URL: ${QDRANT_URL:?Set QDRANT_URL in .env before starting Docker Compose}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
       SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://${POSTGRES_USER:-thinkdocu}:${POSTGRES_PASSWORD:-thinkdocu_password}@db:5432/${POSTGRES_DB:-thinkdocu_db}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333

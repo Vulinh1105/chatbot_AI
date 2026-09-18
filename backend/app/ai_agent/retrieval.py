@@ -11,6 +11,18 @@ COLLECTION_NAME = os.getenv(
     "QDRANT_COLLECTION",
     "chatbot_documents_v2")
 
+
+def _qdrant_url() -> str:
+    return os.getenv(
+        "QDRANT_URL",
+        f"http://{os.getenv('QDRANT_HOST', 'localhost')}:{os.getenv('QDRANT_PORT', '6333')}",
+    )
+
+
+def _qdrant_api_key() -> str | None:
+    value = os.getenv("QDRANT_API_KEY")
+    return None if value in {None, "", "None", "null"} else value
+
 # nhận: query, trả về: Document
 class Retriever(Protocol):
     def retrieve(self, query: str, k: int = 8) -> list[Document]: ...
@@ -29,7 +41,7 @@ class QdrantRetriever:
             self._store = QdrantVectorStore.from_existing_collection(
                 embedding=OpenAIEmbeddings(model="text-embedding-3-large"),
                 collection_name=self.collection_name,
-                url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"),
+                url=_qdrant_url(), api_key=_qdrant_api_key(),
                 prefer_grpc=False,
             )
         return self._store

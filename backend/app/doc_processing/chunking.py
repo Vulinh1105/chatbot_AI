@@ -24,12 +24,17 @@ ingestion.build_document_meta().
 
 from __future__ import annotations
 
-import json
 import logging
+import os
+import re
 import sys
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Thêm thư mục `backend` vào sys.path khi chạy script trực tiếp (python backend/app/doc_processing/chunking.py)
 _backend_dir = str(Path(__file__).resolve().parent.parent.parent)
@@ -41,9 +46,22 @@ logger = logging.getLogger(__name__)
 # backend/app/doc_processing/chunking.py -> parent = doc_processing/
 OUTPUT_CHUNKING_DIR = Path(__file__).resolve().parent / "doc"
 
-# Kho chunk DUY NHẤT của toàn hệ thống (yêu cầu: 1 file chunks.json chứa
-# nhiều chunk liên tục để trả lời nhiều câu hỏi về sau).
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "chatbot_documents_v2")
+# Giữ hằng số để các script dọn dữ liệu cũ không bị lỗi import. Chunk mới
+# không còn được ghi vào file này.
 CHUNKS_STORE_FILE = OUTPUT_CHUNKING_DIR / "chunks.json"
+
+
+def _qdrant_url() -> str:
+    return os.getenv(
+        "QDRANT_URL",
+        f"http://{os.getenv('QDRANT_HOST', 'localhost')}:{os.getenv('QDRANT_PORT', '6333')}",
+    )
+
+
+def _qdrant_api_key() -> str | None:
+    value = os.getenv("QDRANT_API_KEY")
+    return None if value in {None, "", "None", "null"} else value
 
 # Nhiều request upload có thể chạy song song (FastAPI BackgroundTasks), nếu
 # không khoá ghi file, 2 tiến trình có thể ghi đè lẫn nhau -> mất dữ liệu.
@@ -103,10 +121,86 @@ def _split_recursive_paragraph(text: str, max_chars: int = 500) -> list[str]:
         pieces.append(buffer)
     return pieces
 
+def _split_semantic(text: str, max_chars: int = 500) -> list[str]:
+    """
+    Chiến lược Semantic Chunking:
+    Chia văn bản dựa trên sự thay đổi ngữ nghĩa giữa các câu,
+    thay vì chỉ dựa trên số lượng ký tự. `max_chars` là trần cứng để
+    một nhóm câu không trở thành chunk quá dài khi các câu có chủ đề gần nhau.
+    """
+    import math
+
+    from langchain_openai import OpenAIEmbeddings
+
+    if max_chars <= 0:
+        raise ValueError("max_chars phải lớn hơn 0.")
+
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?。！？])\s+", text.strip())
+        if sentence.strip()
+    ]
+    if len(sentences) <= 1:
+        return [
+            piece
+            for sentence in sentences
+            for piece in (
+                [sentence]
+                if len(sentence) <= max_chars
+                else _split_fixed_overlap(sentence, chunk_size=max_chars, overlap=0)
+            )
+        ]
+
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    vectors = embeddings.embed_documents(sentences)
+    distances = []
+    for current, following in zip(vectors, vectors[1:]):
+        current_norm = math.sqrt(sum(value * value for value in current))
+        following_norm = math.sqrt(sum(value * value for value in following))
+        if current_norm == 0 or following_norm == 0:
+            distances.append(1.0)
+            continue
+        similarity = sum(a * b for a, b in zip(current, following)) / (
+            current_norm * following_norm
+        )
+        distances.append(1 - similarity)
+
+    sorted_distances = sorted(distances)
+    percentile_index = (len(sorted_distances) - 1) * 0.95
+    lower_index = math.floor(percentile_index)
+    upper_index = math.ceil(percentile_index)
+    if lower_index == upper_index:
+        threshold = sorted_distances[lower_index]
+    else:
+        fraction = percentile_index - lower_index
+        threshold = sorted_distances[lower_index] + fraction * (
+            sorted_distances[upper_index] - sorted_distances[lower_index]
+        )
+
+    chunks = []
+    current_chunk = [sentences[0]]
+    for index, sentence in enumerate(sentences[1:]):
+        candidate = " ".join(current_chunk + [sentence])
+        if distances[index] >= threshold or len(candidate) > max_chars:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = []
+        current_chunk.append(sentence)
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+
+    bounded_chunks = []
+    for chunk in chunks:
+        if len(chunk) <= max_chars:
+            bounded_chunks.append(chunk)
+        else:
+            bounded_chunks.extend(_split_fixed_overlap(chunk, chunk_size=max_chars, overlap=0))
+    return bounded_chunks
+
 
 _STRATEGIES = {
     "fixed_overlap": _split_fixed_overlap,
     "recursive_paragraph": _split_recursive_paragraph,
+    "semantic": _split_semantic,
 }
 
 
@@ -116,7 +210,7 @@ _STRATEGIES = {
 
 def chunk_blocks(
     parsed_blocks: list[dict],
-    strategy: str = "fixed_overlap",
+    strategy: str = "semantic",
     document_meta: dict | None = None,
     **strategy_kwargs,
 ) -> list[dict]:
@@ -124,7 +218,7 @@ def chunk_blocks(
     Args:
         parsed_blocks: output của parsing.parse_document() - mỗi block có
             {document_id, page, text}.
-        strategy: "fixed_overlap" hoặc "recursive_paragraph".
+        strategy: "semantic", "fixed_overlap" hoặc "recursive_paragraph".
         document_meta: metadata bổ sung theo chuẩn chunk schema trong
             Kick-off Guide, ví dụ:
             {"department": "HR", "access_level": "internal", "version": 1,
@@ -168,74 +262,70 @@ def chunk_blocks(
 
 
 # ---------------------------------------------------------------------------
-# I/O: gộp & lưu liên tục vào doc/chunks.json
+# I/O: lưu chunk vào Qdrant
 # ---------------------------------------------------------------------------
 
 def load_all_chunks() -> list[dict]:
-    """Đọc toàn bộ kho chunk hiện có. Trả về [] nếu file chưa tồn tại hoặc
-    rỗng - KHÔNG raise lỗi, để các module gọi (pipeline.py, G3 retrieval)
-    không cần try/except riêng cho trường hợp "chưa có tài liệu nào được index"."""
-    if not CHUNKS_STORE_FILE.exists():
-        return []
-
-    raw = CHUNKS_STORE_FILE.read_text(encoding="utf-8").strip()
-    if not raw:
-        return []
-
+    """Đọc payload chunk từ Qdrant để phục vụ keyword retrieval."""
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        # File bị ghi dở/hỏng (vd process bị kill giữa chừng lúc ghi). Không
-        # để lỗi này làm sập cả pipeline - log cảnh báo, backup file lỗi lại
-        # để debug, và coi như kho tạm thời rỗng.
-        backup_path = CHUNKS_STORE_FILE.with_suffix(".corrupt.json")
-        CHUNKS_STORE_FILE.replace(backup_path)
-        logger.error(
-            "chunks.json bị lỗi định dạng JSON (%s) - đã backup vào '%s' và reset kho chunk.",
-            exc, backup_path,
-        )
+        from qdrant_client import QdrantClient
+
+        client = QdrantClient(url=_qdrant_url(), api_key=_qdrant_api_key())
+        if not client.collection_exists(QDRANT_COLLECTION):
+            return []
+        points, _ = client.scroll(QDRANT_COLLECTION, limit=10000, with_payload=True, with_vectors=False)
+        chunks = []
+        for point in points:
+            payload = point.payload or {}
+            metadata = payload.get("metadata", {})
+            content = payload.get("page_content", payload.get("content", ""))
+            chunks.append({"content": content, **metadata})
+        return chunks
+    except Exception as exc:
+        logger.warning("Không thể đọc chunk từ Qdrant: %s", exc)
         return []
 
 
-def _write_all_chunks(chunks: list[dict]) -> None:
-    """Ghi ĐÈ toàn bộ kho chunk bằng kỹ thuật write-to-temp-then-rename
-    (atomic write): ghi ra file tạm trước, rename đè lên file thật ở bước
-    cuối cùng. Nếu tiến trình bị kill giữa chừng, file chunks.json cũ vẫn
-    còn nguyên vẹn thay vì bị ghi dở dang."""
-    OUTPUT_CHUNKING_DIR.mkdir(parents=True, exist_ok=True)
-    tmp_path = CHUNKS_STORE_FILE.with_suffix(".tmp")
-    tmp_path.write_text(json.dumps(chunks, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp_path.replace(CHUNKS_STORE_FILE)
+def _delete_qdrant_document(document_id: int) -> None:
+    from qdrant_client import QdrantClient, models
+
+    client = QdrantClient(url=_qdrant_url(), api_key=_qdrant_api_key())
+    if client.collection_exists(QDRANT_COLLECTION):
+        client.delete(
+            QDRANT_COLLECTION,
+            points_selector=models.FilterSelector(
+                filter=models.Filter(
+                    must=[models.FieldCondition(key="metadata.document_id", match=models.MatchValue(value=document_id))]
+                )
+            ),
+        )
 
 
-def save_chunks(chunks: list[dict], document_id: int) -> Path:
+def save_chunks(chunks: list[dict], document_id: int) -> str:
     """
-    Gộp `chunks` (của 1 document_id) vào kho chung `doc/chunks.json`:
-      1. Load kho hiện có.
-      2. Xoá các chunk CŨ của cùng document_id (nếu user re-upload / re-index
-         tài liệu - UC-17 "Quản lý phiên bản tài liệu") để tránh trùng lặp
-         hoặc chunk cũ trỏ sai nội dung mới.
-      3. Thêm các chunk mới vào.
-      4. Sắp xếp lại toàn kho theo (document_id, page, chunk_index) để chunk
-         của cùng 1 tài liệu luôn nằm LIÊN TỤC (continuous) trong file - hỗ
-         trợ G3 khi cần lấy nhiều chunk liền kề mở rộng ngữ cảnh, và giúp
-         chunks.json luôn tích luỹ được nhiều chunk để trả lời nhiều câu hỏi
-         khác nhau về sau, không bị mất dữ liệu của tài liệu upload trước.
-      5. Ghi đè an toàn (atomic write).
-
-    Trả về đường dẫn file `chunks.json`.
+    Xóa các point cũ của tài liệu rồi embedding và upsert chunk mới vào Qdrant.
+    `content` được đưa vào page_content; các trường còn lại trở thành payload
+    metadata của point.
     """
     with _STORE_LOCK:
-        existing = load_all_chunks()
-        remaining = [c for c in existing if c.get("document_id") != document_id]
-        merged = remaining + chunks
-        merged.sort(key=lambda c: (c.get("document_id", 0), c.get("page", 0), c.get("chunk_index", 0)))
-        _write_all_chunks(merged)
+        from langchain_core.documents import Document
+        from app.ai_agent.embeddings import create_vector_db
+
+        _delete_qdrant_document(document_id)
+        docs = [
+            Document(
+                page_content=chunk["content"],
+                metadata={key: value for key, value in chunk.items() if key != "content"},
+            )
+            for chunk in chunks
+        ]
+        if docs:
+            create_vector_db(docs)
         logger.info(
-            "Đã lưu %s chunk mới cho document_id=%s vào '%s' (tổng kho hiện có %s chunk).",
-            len(chunks), document_id, CHUNKS_STORE_FILE, len(merged),
+            "Đã index %s chunk cho document_id=%s vào collection '%s'.",
+            len(chunks), document_id, QDRANT_COLLECTION,
         )
-        return CHUNKS_STORE_FILE
+        return QDRANT_COLLECTION
 
 
 def delete_chunks_by_document(document_id: int) -> int:
@@ -243,22 +333,20 @@ def delete_chunks_by_document(document_id: int) -> int:
     bị xoá (UC-16 "Xóa tài liệu") để tránh chatbot vẫn trả lời dựa trên tài
     liệu Admin đã xoá (dữ liệu "mồ côi"). Trả về số chunk đã xoá."""
     with _STORE_LOCK:
-        existing = load_all_chunks()
-        remaining = [c for c in existing if c.get("document_id") != document_id]
-        removed_count = len(existing) - len(remaining)
-        if removed_count:
-            _write_all_chunks(remaining)
-            logger.info("Đã xoá %s chunk của document_id=%s khỏi kho chunk.", removed_count, document_id)
-        return removed_count
+        before = [chunk for chunk in load_all_chunks() if chunk.get("document_id") == document_id]
+        _delete_qdrant_document(document_id)
+        if before:
+            logger.info("Đã xoá %s chunk của document_id=%s khỏi Qdrant.", len(before), document_id)
+        return len(before)
 
 
 def chunk_and_save(
     parsed_blocks: list[dict],
     document_id: int,
-    strategy: str = "fixed_overlap",
+    strategy: str = "semantic",
     document_meta: dict | None = None,
     **strategy_kwargs,
-) -> tuple[list[dict], Path]:
+ ) -> tuple[list[dict], str]:
     """Tiện ích gộp: chunk rồi lưu luôn vào kho chung - dùng trong
     pipeline.py cho luồng end-to-end (T11)."""
     chunks = chunk_blocks(parsed_blocks, strategy=strategy, document_meta=document_meta, **strategy_kwargs)
@@ -276,6 +364,6 @@ if __name__ == "__main__":
         "page": 1,
         "text": "Nhan vien thu viec duoc nghi phep 2 ngay moi thang.\nQuy dinh ap dung tu 2024.",
     }]
-    result = chunk_blocks(fake_blocks, strategy="recursive_paragraph")
+    result = chunk_blocks(fake_blocks, strategy="semantic")
     print(f"Đã tạo {len(result)} chunk demo trong bộ nhớ; không ghi vào chunks.json")
     print(f"Tổng số chunk trong kho={len(load_all_chunks())}")

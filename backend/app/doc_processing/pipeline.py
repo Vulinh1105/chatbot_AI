@@ -43,7 +43,7 @@ from app.doc_processing.parsing import ParsingError
 
 logger = logging.getLogger(__name__)
 
-# File log trạng thái indexing, đặt cùng thư mục doc/ với chunks.json.
+# File log trạng thái indexing, đặt cùng thư mục dữ liệu phụ trợ.
 # Document model (G4) hiện CHƯA có cột `status` (xem app/model/document.py),
 # nên G2 tự quản lý trạng thái ở đây để KHÔNG phải chờ G4 chạy Alembic
 # migration mới demo được T11. Khi G4 bổ sung cột status cho bảng documents
@@ -68,7 +68,7 @@ class PipelineResult:
     document_id: int
     status: IndexingStatus
     chunk_count: int = 0
-    strategy: str = "fixed_overlap"
+    strategy: str = "semantic"
     error: str | None = None
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     finished_at: str | None = None
@@ -133,7 +133,7 @@ _ENABLE_AUTO_EMBEDDING = os.getenv("ENABLE_AUTO_EMBEDDING", "false").lower() == 
 async def run_pipeline_for_document(
     document_id: int,
     db: AsyncSession,
-    strategy: str = "fixed_overlap",
+    strategy: str = "semantic",
 ) -> PipelineResult:
     """
     Chạy toàn bộ luồng Parse -> Chunk -> (Embedding) -> Index cho 1
@@ -152,7 +152,7 @@ async def run_pipeline_for_document(
         _save_status(result)
         document, parsed_blocks = await ingestion.ingest_document(document_id, db)
 
-        # --- Bước 3: chunking + lưu liên tục vào doc/chunks.json ---
+        # --- Bước 3: chunking + embedding + index vào Qdrant ---
         result.status = IndexingStatus.CHUNKING
         _save_status(result)
         document_meta = ingestion.build_document_meta(document)
@@ -163,19 +163,8 @@ async def run_pipeline_for_document(
             document_meta=document_meta,
         )
         result.chunk_count = len(chunks)
-        result.status = IndexingStatus.CHUNKED
+        result.status = IndexingStatus.INDEXED
         _save_status(result)
-
-        # --- Bước 4 (tuỳ chọn, an toàn): bàn giao cho embedding layer của G3 ---
-        if _ENABLE_AUTO_EMBEDDING:
-            result.status = IndexingStatus.EMBEDDING
-            _save_status(result)
-            _try_trigger_embedding(chunks)
-            result.status = IndexingStatus.INDEXED
-        # Nếu không bật auto-embedding, CHUNKED vẫn là kết quả THÀNH CÔNG của
-        # G2 - G3 có thể tự chạy embedding riêng (batch job) bằng cách đọc
-        # thẳng chunks.json qua chunking.load_all_chunks(), không phụ thuộc
-        # vào việc pipeline này có gọi trực tiếp sang ai_agent hay không.
 
         result.finished_at = datetime.now(timezone.utc).isoformat()
         _save_status(result)
@@ -238,7 +227,7 @@ def _try_trigger_embedding(chunks: list[dict]) -> None:
 # app/api/v1/endpoints/document.py - hàm upload_document/replace_document)
 # ---------------------------------------------------------------------------
 
-async def run_pipeline_background(document_id: int, strategy: str = "fixed_overlap") -> None:
+async def run_pipeline_background(document_id: int, strategy: str = "semantic") -> None:
     """
     Entrypoint dành riêng cho `BackgroundTasks.add_task(...)`.
 

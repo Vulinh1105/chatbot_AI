@@ -81,9 +81,14 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         health_status["postgres"] = "unhealthy"
     try:
         from qdrant_client import QdrantClient
-        qdrant_host = os.getenv("QDRANT_HOST", "qdrant")
-        qdrant_port = int(os.getenv("QDRANT_PORT", 6333))
-        client = QdrantClient(host=qdrant_host, port=qdrant_port, timeout=2.0)
+        qdrant_url = os.getenv(
+            "QDRANT_URL",
+            f"http://{os.getenv('QDRANT_HOST', 'qdrant')}:{os.getenv('QDRANT_PORT', '6333')}",
+        )
+        qdrant_api_key = os.getenv("QDRANT_API_KEY")
+        if qdrant_api_key in {"", "None", "null"}:
+            qdrant_api_key = None
+        client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, timeout=2.0)
         client.get_collections()
     except Exception:
         health_status["qdrant"] = "unhealthy"
