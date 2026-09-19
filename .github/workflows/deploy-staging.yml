@@ -14,7 +14,30 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
+      - name: Check both CIs passed
+        id: check_ci
+        if: ${{ github.event_name == 'workflow_run' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          echo "Checking CI status for commit: $HEAD_SHA"
+          FRONTEND_STATUS=$(gh run list --workflow="Frontend CI" --commit="$HEAD_SHA" --json conclusion -q '.[0].conclusion')
+          BACKEND_STATUS=$(gh run list --workflow="Backend CI" --commit="$HEAD_SHA" --json conclusion -q '.[0].conclusion')
+          
+          echo "Frontend CI conclusion: $FRONTEND_STATUS"
+          echo "Backend CI conclusion: $BACKEND_STATUS"
+          
+          if [ "$FRONTEND_STATUS" = "success" ] && [ "$BACKEND_STATUS" = "success" ]; then
+            echo "Both Frontend CI and Backend CI passed successfully. Proceeding to deploy."
+            echo "can_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "Both CIs are not yet successful (one may still be running or failed). Skipping deploy."
+            echo "can_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Deploy via SSH
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.check_ci.outputs.can_deploy == 'true' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -25,4 +48,4 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             docker compose up -d --build
-            docker system prune -f
+            docker image prune -f
