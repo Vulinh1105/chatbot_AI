@@ -1,219 +1,207 @@
+"""
+# rag_pipeline.py — entry point của RAG pipeline.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol
+import logging
+import os
+import sys
+from collections import defaultdict, deque
+from typing import Any
 
-from langchain_core.documents import Document
-
-from .evaluate_retrieval import EvalCase, run_comparison
-from .graph import GraphDependencies, build_rag_graph
-from .hybrid_retrieval import HybridRetriever
-from .prompt import generate_answer
-from .retrieval import QdrantRetriever, Retriever
+from .graph import (
+    ComparisonGenerateFn,
+    DEFAULT_MIN_RERANK_SCORE,
+    DEFAULT_RERANK_TOP_K,
+    DEFAULT_RETRIEVE_K,
+    GenerateFn,
+    RerankerLike,
+    RetrieverLike,
+    build_rag_graph,
+)
+from .state import RAGState
 from .validation import check_query
 
+logger = logging.getLogger(__name__)
 
-@dataclass
-class Turn:
+
+# Cấu hình (có thể override bằng biến môi trường trong .env)
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+
+# Lưu lịch sử hội thoại (in-memory)
+class InMemoryTurnStore:
     """
-    Represents one completed conversation turn.
-    """
-
-    query: str
-    answer: str
-    rewritten_query: str | None = None
-    context: list[Document] = field(default_factory=list)
-
-
-# Conversation store interface
-class ConversationStore(Protocol):
-    """
-    Contract for conversation history storage.
-
-    Any storage implementation must provide:
-        get(session_id)
-        append(session_id, turn)
-
-    Examples:
-        - InMemoryConversationStore
-        - RedisConversationStore
-        - PostgreSQLConversationStore
-    """
-
-    def get(self, session_id: str) -> list[Turn]:
-        raise NotImplementedError
-
-    def append(self, session_id: str, turn: Turn) -> None:
-        raise NotImplementedError
-
-
-
-class InMemoryConversationStore:
-    """
-    Stores conversation history in application memory.
-
-    Suitable for:
-        - local development
-        - testing
-        - demos
-
-    Not suitable for production persistence because
-    data disappears when the process/server restarts.
+    Lưu lịch sử theo session_id trong RAM (mất khi restart).
+    Thay bằng DB / Redis khi cần lưu bền vững — chỉ cần giữ nguyên
+    chữ ký save(...) và get_history(...).
     """
 
-    def __init__(self) -> None:
-        self._turns: dict[str, list[Turn]] = {}
-
-    def get(self, session_id: str) -> list[Turn]:
-        return list(
-            self._turns.get(session_id, [])
+    def __init__(self, max_turns: int = 20) -> None:
+        self._messages: dict[str, deque[dict[str, Any]]] = defaultdict(
+            lambda: deque(maxlen=max_turns * 2)
         )
 
-    def append(
+    def save(
         self,
         session_id: str,
-        turn: Turn,
+        query: str,
+        answer: str,
+        citations: list[dict[str, Any]],
     ) -> None:
-        if session_id not in self._turns:
-            self._turns[session_id] = []
+        messages = self._messages[session_id]
+        messages.append({"role": "user", "content": query})
+        messages.append(
+            {"role": "assistant", "content": answer, "citations": citations}
+        )
 
-        self._turns[session_id].append(turn)
+    def get_history(self, session_id: str) -> list[dict[str, Any]]:
+        return list(self._messages.get(session_id, []))
 
 
-# RAG Pipeline
+# Chuẩn bị dependency (lazy import)
+def _build_hybrid_retriever() -> RetrieverLike:
+    from .hybrid_retrieval import HybridRetriever
+    from .retrieval import QdrantRetriever
 
+    semantic = QdrantRetriever()
+    hybrid = HybridRetriever(semantic)  # scroll toàn bộ chunk từ Qdrant vào RAM
+
+    if not hybrid.documents:
+        logger.warning(
+            "HybridRetriever không load được chunk nào từ Qdrant "
+            "-> keyword search sẽ không hoạt động."
+        )
+    else:
+        logger.info("HybridRetriever loaded %d chunks", len(hybrid.documents))
+
+    return hybrid
+
+
+def _build_reranker() -> RerankerLike:
+    from .reranking import Reranker
+
+    return Reranker()  # load model 1 lần duy nhất
+
+
+def _build_generator() -> GenerateFn:
+    # prompt.py: generate_answer(query, context_chunks) -> str
+    from .prompt import generate_answer
+
+    return generate_answer
+
+
+# THÊM (Hướng B):
+# prompt.py: generate_comparison_answer(query, branch_evidence) -> str
+def _build_comparison_generator() -> ComparisonGenerateFn:
+    from .prompt import generate_comparison_answer
+
+    return generate_comparison_answer
+
+
+# RAGPipeline
 class RAGPipeline:
+    """Đóng gói dependency + graph. Tạo 1 lần, gọi .run() nhiều lần."""
 
     def __init__(
         self,
         *,
-        retriever: Retriever | HybridRetriever | None = None,
-        rerank: Callable[
-            [str, list[Document], int],
-            tuple[list[Document], float],
-        ]
-        | None = None,
-        generate: Callable[
-            [str, list[Document]],
-            str,
-        ] = generate_answer,
-        store: ConversationStore | None = None,
-        query_checker: Callable[
-            [str],
-            Any,
-        ] = check_query,
+        retriever: RetrieverLike | None = None,
+        reranker: RerankerLike | None = None,
+        generator: GenerateFn | None = None,
+        comparison_generator: ComparisonGenerateFn | None = None,
+        query_checker=check_query,
+        turn_store: InMemoryTurnStore | None = None,
+        retrieve_k: int | None = None,
+        rerank_top_k: int | None = None,
+        min_rerank_score: float | None = None,
     ) -> None:
+        # 1. Chuẩn bị dependency
+        self.turn_store = turn_store or InMemoryTurnStore()
+        self.retriever = retriever or _build_hybrid_retriever()
+        self.reranker = reranker or _build_reranker()
+        self.generator = generator or _build_generator()
 
-        #  Create retrieval component
-        semantic_retriever = retriever or QdrantRetriever()
-
-        # If the supplied retriever is already hybrid,
-        # use it directly.
-        if isinstance(
-            semantic_retriever,
-            HybridRetriever,
-        ):
-            self.retriever = semantic_retriever
-
-        # Otherwise wrap the semantic retriever
-        # inside HybridRetriever.
-        else:
-            self.retriever = HybridRetriever(
-                semantic_retriever
-            )
-
-        #  Create conversation storage
-        self.store = (
-            store
-            if store is not None
-            else InMemoryConversationStore()
+        # THÊM (Hướng B):
+        # generator riêng cho câu hỏi so sánh nhiều đối tượng.
+        self.comparison_generator = (
+            comparison_generator or _build_comparison_generator()
         )
 
-        # built LangGraph
-        dependencies = GraphDependencies(
-            retriever=self.retriever,
-            rerank=rerank,
-            generate=generate,
-            query_checker=query_checker,
-            store=self.store,
-            turn_factory=Turn,
-        )
-
+        # 2. Tạo graph
         self.graph = build_rag_graph(
-            dependencies
+            retriever=self.retriever,
+            reranker=self.reranker,
+            generate_fn=self.generator,
+            comparison_generate_fn=self.comparison_generator,
+            query_checker=query_checker,
+            save_turn_fn=self.turn_store.save,
+            retrieve_k=retrieve_k
+            if retrieve_k is not None
+            else _env_int("RETRIEVE_K", DEFAULT_RETRIEVE_K),
+            rerank_top_k=rerank_top_k
+            if rerank_top_k is not None
+            else _env_int("RERANK_TOP_K", DEFAULT_RERANK_TOP_K),
+            min_rerank_score=min_rerank_score
+            if min_rerank_score is not None
+            else _env_float("MIN_RERANK_SCORE", DEFAULT_MIN_RERANK_SCORE),
         )
 
-    # Runnnnn Timeeee
     def run(
         self,
         query: str,
         session_id: str = "default",
+        *,
+        include_state: bool = False,
     ) -> dict[str, Any]:
-
-        # get previous conversation
-        history = self.store.get(
-            session_id
-        )
-
-        # execute complete LangGraph workflow
-        initial_state = {
+        # 3. Tạo initial state
+        initial_state: RAGState = {
             "query": query,
             "session_id": session_id,
-            "history": history,
+            "history": self.turn_store.get_history(session_id),
             "hybrid_attempted": False,
         }
 
-        result = self.graph.invoke(
-            initial_state
-        )
+        # 4. Chạy graph
+        final_state = self.graph.invoke(initial_state)
 
-        # Return only application-facing fields
-        output_keys = (
-            "answer",
-            "valid",
-            "citations",
-            "rewritten_query",
-            "needs_rewrite",
-            "route",
-            "refusal_reason",
-            "retrieval_quality",
-            "guardrail_reason",
-            "retrieved_chunks",
-            "reranked_chunks",
-        )
-
-        return {
-            key: result.get(key)
-            for key in output_keys
+        result: dict[str, Any] = {
+            "answer": final_state.get("answer", ""),
+            "citations": final_state.get("citations", []),
+            "valid": bool(final_state.get("valid", False)),
+            "route": final_state.get("route", "refuse"),
+            "refusal_reason": final_state.get("refusal_reason"),
+            "guardrail_reason": final_state.get("guardrail_reason"),
+            "top_rerank_score": final_state.get("top_rerank_score"),
+            "evidence_reason": final_state.get("evidence_reason"),
+            "session_id": session_id,
         }
 
+        if include_state:
+            result["state"] = final_state
 
-    # Offline retrieval evaluation
-    def evaluate_retrieval(
-        self,
-        eval_set: list[EvalCase],
-        top_k: int = 3,
-    ) -> tuple[dict, dict]:
-
-        return run_comparison(
-            self.retriever,
-            eval_set=eval_set,
-            top_k=top_k,
-        )
+        return result
 
 
-# 7. Application-level pipeline instance
+# API đơn giản cho code khác gọi
 _pipeline: RAGPipeline | None = None
 
 
 def get_pipeline() -> RAGPipeline:
-    """
-    Return the shared RAGPipeline instance.
-
-    The graph is created once and reused across requests.
-    """
-
+    """Singleton: model reranker + chunk keyword chỉ load 1 lần."""
     global _pipeline
 
     if _pipeline is None:
@@ -222,18 +210,60 @@ def get_pipeline() -> RAGPipeline:
     return _pipeline
 
 
-# 8. Public entry point
-def run_pipeline(
+def run_rag(
     query: str,
     session_id: str = "default",
+    *,
+    include_state: bool = False,
 ) -> dict[str, Any]:
-    """
-    Public function used by the API/application layer.
-    """
-
-    pipeline = get_pipeline()
-
-    return pipeline.run(
-        query=query,
-        session_id=session_id,
+    return get_pipeline().run(
+        query,
+        session_id,
+        include_state=include_state,
     )
+
+
+# ---------------------------------------------------------------------------
+# Chat thử trên terminal (chỉ chạy khi chạy trực tiếp file này)
+# ---------------------------------------------------------------------------
+
+_EXIT_COMMANDS = {"exit", "quit", "q", "thoát"}
+
+
+def _chat_cli() -> None:
+    """Vòng lặp hỏi đáp nhiều câu để test local. Gõ 'exit' để thoát."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+
+    print("Đang khởi tạo RAG pipeline (load chunks + reranker)...")
+    pipeline = get_pipeline()  # load 1 lần, dùng lại cho mọi câu hỏi
+    session_id = "cli"
+    print("Sẵn sàng. Gõ 'exit' để thoát.\n")
+
+    while True:
+        try:
+            query = input("Bạn: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+
+        if not query:
+            continue
+
+        if query.lower() in _EXIT_COMMANDS:
+            break
+
+        output = pipeline.run(query, session_id)
+
+        print(f"\nBot: {output['answer']}")
+        print(
+            f"\n[route={output['route']} "
+            f"refusal_reason={output['refusal_reason']} "
+            f"top_rerank_score={output['top_rerank_score']}]\n"
+        )
+
+
+if __name__ == "__main__":
+    _chat_cli()
