@@ -11,6 +11,7 @@ from collections import defaultdict, deque
 from typing import Any
 
 from .graph import (
+    ComparisonGenerateFn,
     DEFAULT_MIN_RERANK_SCORE,
     DEFAULT_RERANK_TOP_K,
     DEFAULT_RETRIEVE_K,
@@ -103,6 +104,14 @@ def _build_generator() -> GenerateFn:
     return generate_answer
 
 
+# THÊM (Hướng B):
+# prompt.py: generate_comparison_answer(query, branch_evidence) -> str
+def _build_comparison_generator() -> ComparisonGenerateFn:
+    from .prompt import generate_comparison_answer
+
+    return generate_comparison_answer
+
+
 # RAGPipeline
 class RAGPipeline:
     """Đóng gói dependency + graph. Tạo 1 lần, gọi .run() nhiều lần."""
@@ -113,6 +122,7 @@ class RAGPipeline:
         retriever: RetrieverLike | None = None,
         reranker: RerankerLike | None = None,
         generator: GenerateFn | None = None,
+        comparison_generator: ComparisonGenerateFn | None = None,
         query_checker=check_query,
         turn_store: InMemoryTurnStore | None = None,
         retrieve_k: int | None = None,
@@ -125,11 +135,18 @@ class RAGPipeline:
         self.reranker = reranker or _build_reranker()
         self.generator = generator or _build_generator()
 
+        # THÊM (Hướng B):
+        # generator riêng cho câu hỏi so sánh nhiều đối tượng.
+        self.comparison_generator = (
+            comparison_generator or _build_comparison_generator()
+        )
+
         # 2. Tạo graph
         self.graph = build_rag_graph(
             retriever=self.retriever,
             reranker=self.reranker,
             generate_fn=self.generator,
+            comparison_generate_fn=self.comparison_generator,
             query_checker=query_checker,
             save_turn_fn=self.turn_store.save,
             retrieve_k=retrieve_k

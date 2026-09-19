@@ -61,12 +61,65 @@ Ví dụ: nếu <context> nói về "chiến lược kinh doanh" nhưng không n
 20. Nếu không thể xác định được bằng chứng trong <context> có thực sự trả lời đúng câu hỏi hay không, ưu tiên từ chối thay vì suy đoán hoặc ghép các thông tin không cùng phạm vi.
 
 21. Nếu câu hỏi có thể được trả lời trực tiếp từ một hoặc nhiều đoạn trong <context> thuộc đúng đối tượng/phạm vi, hãy trả lời dựa trên các đoạn đó và bỏ qua các đoạn không liên quan.
+
+THÊM:
+22. Mỗi đoạn trong <context> có thể được gắn nhãn "[Nguồn: <tên tài liệu>, trang <số trang>]" ngay phía trước nội dung. Được phép dùng nhãn "[Nguồn: ...]" này để xác định đoạn đó thuộc về đối tượng/quốc gia/năm nào, kể cả khi bản thân nội dung đoạn không lặp lại tên đối tượng/năm đó. Không được bỏ qua thông tin trong "[Nguồn: ...]" khi xác định phạm vi/đối tượng của một đoạn.
 """
 
 
 qa_prompt = ChatPromptTemplate.from_messages([
     ("system", SYSTEM_PROMPT_TEMPLATE),
     ("human", "{query}")
+])
+
+
+# THÊM (câu hỏi so sánh nhiều đối tượng):
+# Prompt riêng cho generate_comparison_answer().
+COMPARISON_SYSTEM_PROMPT_TEMPLATE = """Bạn là trợ lý AI tra cứu tài liệu nội bộ của công ty.
+
+Nhiệm vụ: trả lời câu hỏi SO SÁNH giữa nhiều đối tượng, dựa CHỈ vào
+các khối ngữ cảnh trong thẻ <context> bên dưới. Mỗi khối được đánh
+dấu bằng "### Đối tượng: <câu hỏi con>" và chỉ chứa dữ liệu của
+MỘT đối tượng duy nhất (dữ liệu của từng khối đã được hệ thống lọc
+riêng cho đối tượng đó, không lẫn giữa các đối tượng).
+
+<context>
+{context}
+</context>
+
+Quy tắc:
+1. Chỉ dùng nội dung của một khối để trả lời cho đối tượng của khối
+   đó. Không trộn lẫn dữ liệu giữa các khối, kể cả khi số liệu trông
+   giống nhau hoặc cùng đơn vị.
+
+2. Nếu một khối có nội dung "Không có dữ liệu trong tài liệu cho đối
+   tượng này", bạn PHẢI nêu rõ trong câu trả lời rằng tài liệu không
+   có thông tin cho đối tượng đó. TUYỆT ĐỐI không suy đoán, không
+   bịa số liệu, không mượn số liệu của đối tượng khác gán cho đối
+   tượng thiếu dữ liệu này.
+
+3. Nếu chỉ MỘT khối có dữ liệu, vẫn trả lời đầy đủ phần có dữ liệu
+   đó, nêu rõ phần còn lại tài liệu không đề cập, và KHÔNG thực hiện
+   phép so sánh (vì thiếu một vế để so sánh).
+
+4. Nếu TẤT CẢ các khối đều có dữ liệu, thực hiện so sánh dựa trên
+   đúng các con số/thông tin đã cho trong <context>, không tự suy
+   diễn hay thêm nhận định ngoài dữ liệu.
+
+5. Không sử dụng kiến thức bên ngoài.
+
+6. Mỗi đoạn trong khối có thể kèm nhãn "[Nguồn: ...]" - dùng để biết
+   đoạn đó thuộc tài liệu nào, không bỏ qua thông tin này.
+
+7. Trả lời ngắn gọn, có cấu trúc rõ theo từng đối tượng, sau đó mới
+   đến phần so sánh (nếu đủ dữ liệu cả hai bên). Không đề cập đến
+   quá trình retrieval, reranking, điểm số hay kiến trúc hệ thống.
+"""
+
+
+comparison_prompt = ChatPromptTemplate.from_messages([
+    ("system", COMPARISON_SYSTEM_PROMPT_TEMPLATE),
+    ("human", "{query}"),
 ])
 
 
@@ -79,6 +132,29 @@ qa_prompt = ChatPromptTemplate.from_messages([
 # --> viết vào pipeline
 
 
+
+# Gắn nhãn "[Nguồn: <tên tài liệu>, trang <số trang>]" vào trước mỗi
+# đoạn context gửi cho LLM sinh câu trả lời
+def _format_chunk_with_source(doc) -> str:
+    metadata = doc.metadata if hasattr(doc, "metadata") else {}
+
+    source = (
+        metadata.get("source")
+        or metadata.get("source_file")
+        or metadata.get("file_name")
+        or metadata.get("filename")
+        or metadata.get("document_name")
+        or "không rõ nguồn"
+    )
+
+    page = metadata.get("page") or metadata.get("page_number")
+    page_text = f", trang {page}" if page is not None else ""
+
+    content = doc.page_content if hasattr(doc, "page_content") else str(doc)
+
+    return f"[Nguồn: {source}{page_text}]\n{content}"
+
+
 # đang nhận 2 input: query (user), context_chunks(output retrieval/reranking)
 def generate_answer(query: str, context_chunks) -> str:
 
@@ -86,9 +162,8 @@ def generate_answer(query: str, context_chunks) -> str:
     if not context_chunks:
         return "Tài liệu hiện tại không đề cập vấn đề này."
 
-    # Lấy thuộc tính page_content từ Document
     formatted_chunks = [
-        doc.page_content if hasattr(doc, "page_content") else str(doc)
+        _format_chunk_with_source(doc)
         for doc in context_chunks
     ]
 
@@ -144,3 +219,50 @@ def generate_answer(query: str, context_chunks) -> str:
     # trả answer
     return response.strip()
 
+def generate_comparison_answer(
+    query: str,
+    branch_evidence: list[tuple[str, list]],
+) -> str:
+
+    if not branch_evidence:
+        return "Tài liệu hiện tại không đề cập vấn đề này."
+
+    # Phòng hờ: nếu không đối tượng nào có evidence thì đáng lẽ
+    # graph.py đã refuse từ trước khi gọi tới hàm này (route_after_evidence),
+    # nhưng vẫn giữ check này để hàm luôn an toàn khi gọi độc lập/test.
+    if all(not chunks for _, chunks in branch_evidence):
+        return "Tài liệu hiện tại không đề cập vấn đề này."
+
+    blocks: list[str] = []
+
+    for sub_query, chunks in branch_evidence:
+        if chunks:
+            formatted = "\n\n---\n\n".join(
+                _format_chunk_with_source(doc) for doc in chunks
+            )
+        else:
+            formatted = "Không có dữ liệu trong tài liệu cho đối tượng này."
+
+        blocks.append(
+            f"### Đối tượng: {sub_query}\n{formatted}"
+        )
+
+    context_text = "\n\n===\n\n".join(blocks)
+
+    llm = ChatOpenAI(
+        model="gpt-5.4-nano",
+        temperature=0,
+    )
+
+    chain = (
+        comparison_prompt
+        | llm
+        | StrOutputParser()
+    )
+
+    response = chain.invoke({
+        "context": context_text,
+        "query": query,
+    })
+
+    return response.strip()
