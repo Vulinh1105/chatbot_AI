@@ -5,6 +5,7 @@ import {
   getDocuments,
 } from "../../services/documentService";
 import DeleteDocumentModal from "./DeleteDocumentModal";
+import VersionHistoryModal from "./VersionHistoryModal";
 
 interface DocumentListProps {
   refreshKey?: number;
@@ -22,10 +23,14 @@ const formatFileSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const getDocumentIcon = (document: Document): string => {
-  const type = document.content_type?.toLowerCase() ?? "";
+const getDocumentIcon = (
+  document: Document
+): string => {
+  const type =
+    document.content_type?.toLowerCase() ?? "";
 
-  const name = document.original_filename.toLowerCase();
+  const name =
+    document.original_filename.toLowerCase();
 
   if (
     type.includes("pdf") ||
@@ -52,8 +57,11 @@ const getDocumentIcon = (document: Document): string => {
   return "📄";
 };
 
-const getDocumentType = (document: Document): string => {
-  const name = document.original_filename.toLowerCase();
+const getDocumentType = (
+  document: Document
+): string => {
+  const name =
+    document.original_filename.toLowerCase();
 
   if (name.endsWith(".pdf")) {
     return "PDF";
@@ -74,7 +82,9 @@ const getDocumentType = (document: Document): string => {
   return "FILE";
 };
 
-const getErrorMessage = (error: unknown): string => {
+const getErrorMessage = (
+  error: unknown
+): string => {
   const axiosError = error as {
     response?: {
       data?: {
@@ -84,7 +94,8 @@ const getErrorMessage = (error: unknown): string => {
     message?: string;
   };
 
-  const detail = axiosError?.response?.data?.detail;
+  const detail =
+    axiosError?.response?.data?.detail;
 
   if (typeof detail === "string") {
     return detail;
@@ -129,6 +140,7 @@ function DocumentList({
   const [error, setError] =
     useState("");
 
+  
   const [
     selectedDocument,
     setSelectedDocument,
@@ -143,6 +155,12 @@ function DocumentList({
     deleteError,
     setDeleteError,
   ] = useState("");
+
+  
+  const [
+    versionDocument,
+    setVersionDocument,
+  ] = useState<Document | null>(null);
 
   const [
     successMessage,
@@ -167,13 +185,6 @@ function DocumentList({
     }
   };
 
-  /*
-   * Load documents when refreshKey changes.
-   *
-   * Không gọi fetchDocuments() trực tiếp trong useEffect
-   * vì fetchDocuments() chứa setState và ESLint
-   * react-hooks/set-state-in-effect sẽ báo lỗi.
-   */
   useEffect(() => {
     let cancelled = false;
 
@@ -205,6 +216,7 @@ function DocumentList({
       cancelled = true;
     };
   }, [refreshKey]);
+
 
   const openDeleteModal = (
     document: Document
@@ -263,6 +275,27 @@ function DocumentList({
     } finally {
       setIsDeleting(false);
     }
+  };
+
+
+  const openVersionHistory = (
+    document: Document
+  ) => {
+    setVersionDocument(document);
+  };
+
+  const closeVersionHistory = () => {
+    setVersionDocument(null);
+  };
+
+  const handleRollbackSuccess = () => {
+    setSuccessMessage(
+      "Đã khôi phục phiên bản và hoàn tất re-index."
+    );
+
+    window.setTimeout(() => {
+      setSuccessMessage("");
+    }, 3000);
   };
 
   return (
@@ -431,7 +464,8 @@ function DocumentList({
                       gap: "14px",
                       padding: "15px 16px",
                       background: "#fff",
-                      border: "1px solid #e2e8f0",
+                      border:
+                        "1px solid #e2e8f0",
                       borderRadius: "12px",
                     }}
                   >
@@ -440,7 +474,8 @@ function DocumentList({
                         width: "44px",
                         height: "44px",
                         borderRadius: "10px",
-                        background: "#f1f5f9",
+                        background:
+                          "#f1f5f9",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -464,8 +499,10 @@ function DocumentList({
                           fontWeight: 600,
                           color: "#1e293b",
                           overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          textOverflow:
+                            "ellipsis",
+                          whiteSpace:
+                            "nowrap",
                         }}
                         title={
                           document.original_filename
@@ -515,6 +552,34 @@ function DocumentList({
                     <button
                       type="button"
                       onClick={() =>
+                        openVersionHistory(
+                          document
+                        )
+                      }
+                      title="Lịch sử phiên bản"
+                      style={{
+                        width: "40px",
+                        height: "40px",
+                        border: "none",
+                        borderRadius: "9px",
+                        background:
+                          "#eef2ff",
+                        color: "#4f46e5",
+                        cursor: "pointer",
+                        fontSize: "18px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent:
+                          "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      📜
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
                         openDeleteModal(
                           document
                         )
@@ -525,13 +590,15 @@ function DocumentList({
                         height: "40px",
                         border: "none",
                         borderRadius: "9px",
-                        background: "#fef2f2",
+                        background:
+                          "#fef2f2",
                         color: "#dc2626",
                         cursor: "pointer",
                         fontSize: "18px",
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
+                        justifyContent:
+                          "center",
                         flexShrink: 0,
                       }}
                     >
@@ -573,6 +640,16 @@ function DocumentList({
           onCancel={closeDeleteModal}
           onConfirm={() =>
             void handleDelete()
+          }
+        />
+      )}
+
+      {versionDocument && (
+        <VersionHistoryModal
+          document={versionDocument}
+          onClose={closeVersionHistory}
+          onRollbackSuccess={
+            handleRollbackSuccess
           }
         />
       )}

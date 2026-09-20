@@ -1,0 +1,476 @@
+.version-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+
+  background: rgba(3, 7, 18, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.version-modal {
+  position: relative;
+
+  width: min(680px, 100%);
+  max-height: 85vh;
+
+  overflow: hidden;
+
+  border: 1px solid
+    rgba(99, 102, 241, 0.35);
+
+  border-radius: 18px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(15, 23, 42, 0.98),
+      rgba(30, 27, 75, 0.97)
+    );
+
+  box-shadow:
+    0 25px 80px rgba(0, 0, 0, 0.45),
+    0 0 45px rgba(59, 130, 246, 0.12);
+
+  color: #e5e7eb;
+}
+
+.version-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+
+  padding: 22px 24px;
+
+  border-bottom: 1px solid
+    rgba(148, 163, 184, 0.12);
+}
+
+.version-modal-header h3 {
+  margin: 0;
+
+  color: #f8fafc;
+
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.version-modal-header p {
+  margin: 6px 0 0;
+
+  overflow: hidden;
+
+  color: #94a3b8;
+
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-modal-close {
+  width: 34px;
+  height: 34px;
+
+  border: 0;
+  border-radius: 8px;
+
+  background: transparent;
+  color: #94a3b8;
+
+  font-size: 28px;
+  line-height: 1;
+
+  cursor: pointer;
+}
+
+.version-modal-close:hover {
+  background: rgba(148, 163, 184, 0.1);
+  color: #fff;
+}
+
+.version-modal-body {
+  max-height: 55vh;
+
+  padding: 20px 24px;
+
+  overflow-y: auto;
+}
+
+.version-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.version-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 16px;
+
+  padding: 15px 16px;
+
+  border: 1px solid
+    rgba(148, 163, 184, 0.12);
+
+  border-radius: 13px;
+
+  background: rgba(15, 23, 42, 0.58);
+
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.version-item:hover {
+  border-color:
+    rgba(96, 165, 250, 0.35);
+
+  background: rgba(30, 41, 59, 0.72);
+
+  transform: translateY(-1px);
+}
+
+.version-item-current {
+  border-color:
+    rgba(59, 130, 246, 0.4);
+
+  background:
+    rgba(37, 99, 235, 0.09);
+}
+
+.version-info {
+  min-width: 0;
+}
+
+.version-title {
+  display: flex;
+  align-items: center;
+
+  gap: 9px;
+
+  color: #f8fafc;
+}
+
+.version-current-badge {
+  padding: 3px 8px;
+
+  border-radius: 999px;
+
+  background:
+    rgba(34, 197, 94, 0.13);
+
+  color: #86efac;
+
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.version-date {
+  margin-top: 6px;
+
+  color: #94a3b8;
+
+  font-size: 12px;
+}
+
+.version-unavailable {
+  margin-top: 6px;
+
+  color: #fca5a5;
+
+  font-size: 12px;
+}
+
+.version-actions {
+  flex-shrink: 0;
+}
+
+.version-restore-button {
+  padding: 8px 13px;
+
+  border: 1px solid
+    rgba(96, 165, 250, 0.35);
+
+  border-radius: 9px;
+
+  background:
+    rgba(37, 99, 235, 0.15);
+
+  color: #93c5fd;
+
+  font-weight: 500;
+
+  cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.version-restore-button:hover {
+  border-color:
+    rgba(96, 165, 250, 0.6);
+
+  background:
+    rgba(37, 99, 235, 0.28);
+}
+
+.version-restore-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.version-disabled {
+  color: #64748b;
+
+  font-size: 12px;
+}
+
+.version-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+
+  padding: 16px 24px;
+
+  border-top: 1px solid
+    rgba(148, 163, 184, 0.12);
+}
+
+.version-cancel-button {
+  padding: 9px 16px;
+
+  border: 1px solid
+    rgba(148, 163, 184, 0.2);
+
+  border-radius: 9px;
+
+  background:
+    rgba(15, 23, 42, 0.8);
+
+  color: #cbd5e1;
+
+  cursor: pointer;
+}
+
+.version-cancel-button:hover {
+  background:
+    rgba(51, 65, 85, 0.7);
+
+  color: #fff;
+}
+
+
+.version-loading,
+.version-empty {
+  padding: 35px;
+
+  text-align: center;
+
+  color: #94a3b8;
+}
+
+
+.version-error {
+  padding: 12px;
+
+  border: 1px solid
+    rgba(248, 113, 113, 0.25);
+
+  border-radius: 10px;
+
+  background:
+    rgba(127, 29, 29, 0.18);
+
+  color: #fca5a5;
+
+  font-size: 14px;
+}
+
+
+.rollback-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+
+  background:
+    rgba(3, 7, 18, 0.72);
+
+  backdrop-filter: blur(5px);
+}
+
+.rollback-confirm-modal,
+.rollback-progress-modal {
+  width: min(390px, 100%);
+
+  padding: 26px;
+
+  text-align: center;
+
+  border: 1px solid
+    rgba(99, 102, 241, 0.35);
+
+  border-radius: 16px;
+
+  background: #111827;
+
+  box-shadow:
+    0 20px 60px
+      rgba(0, 0, 0, 0.45);
+}
+
+.rollback-icon {
+  margin-bottom: 10px;
+
+  color: #60a5fa;
+
+  font-size: 34px;
+}
+
+.rollback-confirm-modal h4,
+.rollback-progress-modal h4 {
+  margin: 0 0 10px;
+
+  color: #f8fafc;
+
+  font-size: 18px;
+}
+
+.rollback-confirm-modal p,
+.rollback-progress-modal p {
+  color: #94a3b8;
+
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.rollback-warning {
+  color: #fbbf24 !important;
+}
+
+.rollback-actions {
+  display: flex;
+  justify-content: center;
+
+  gap: 10px;
+
+  margin-top: 20px;
+}
+
+.rollback-cancel {
+  padding: 9px 16px;
+
+  border: 1px solid
+    rgba(148, 163, 184, 0.2);
+
+  border-radius: 9px;
+
+  background:
+    rgba(15, 23, 42, 0.8);
+
+  color: #cbd5e1;
+
+  cursor: pointer;
+}
+
+.rollback-cancel:hover {
+  background:
+    rgba(51, 65, 85, 0.7);
+}
+
+.rollback-confirm {
+  padding: 9px 17px;
+
+  border: 0;
+
+  border-radius: 9px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #2563eb,
+      #7c3aed
+    );
+
+  color: #fff;
+
+  font-weight: 600;
+
+  cursor: pointer;
+
+  box-shadow:
+    0 0 20px
+      rgba(59, 130, 246, 0.2);
+}
+
+.rollback-confirm:hover {
+  filter: brightness(1.1);
+}
+
+
+.rollback-spinner {
+  width: 38px;
+  height: 38px;
+
+  margin: 0 auto 16px;
+
+  border: 3px solid
+    rgba(96, 165, 250, 0.2);
+
+  border-top-color: #60a5fa;
+
+  border-radius: 50%;
+
+  animation:
+    rollback-spin 0.8s linear infinite;
+}
+
+@keyframes rollback-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 600px) {
+  .version-modal-overlay {
+    padding: 12px;
+  }
+
+  .version-modal-header,
+  .version-modal-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .version-modal-footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .version-item {
+    align-items: flex-start;
+
+    flex-direction: column;
+  }
+
+  .version-actions {
+    width: 100%;
+  }
+
+  .version-restore-button {
+    width: 100%;
+  }
+}
