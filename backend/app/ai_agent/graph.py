@@ -1,776 +1,741 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
 from typing import Any, Callable, Protocol
 
 from langchain_core.documents import Document
 from langgraph.graph import END, START, StateGraph
 
 from .evidence import EvidenceJudgeResult, judge_evidence
-from .hybrid_retrieval import HybridRetriever
-from .prompt import generate_answer
-from .retrieval import QdrantRetriever, Retriever
+from .query_expansion import split_comparison_query
 from .state import RAGState
 from .validation import (
     NO_EVIDENCE_MESSAGE,
+    QueryCheckResult,
     check_query,
     validate_answer,
 )
 
+logger = logging.getLogger(__name__)
 
-# Workflow controller
+# Cấu hình mặc định
 
-RERANK_TOP_K = 5
+DEFAULT_RETRIEVE_K = 20
 
+DEFAULT_RERANK_TOP_K = 8
 
-# CHANGE:
-# Threshold dùng để xác định kết quả retrieval có đủ liên quan
-# dựa trên rerank_score của document đứng đầu.
-#
-# Kết quả test:
-# - Positive queries: top rerank score >= 0.882
-# - Negative queries: top rerank score <= 0.00089
-#
-# Chọn 0.5 làm threshold ban đầu để tạo khoảng cách an toàn
-# giữa nhóm có evidence và nhóm không có evidence.
-RERANK_SCORE_THRESHOLD = 0.5
+DEFAULT_MIN_RERANK_SCORE = 0.05
 
+# Refusal messages (theo lý do)
+_TECHNICAL_ERROR_MESSAGE = (
+    "Hệ thống đang gặp sự cố khi xử lý câu hỏi. Vui lòng thử lại sau."
+)
 
-class ConversationStore(Protocol):
-    def append(
-        self,
-        session_id: str,
-        turn: Any,
-    ) -> None:
-        ...
-
-
-@dataclass
-class GraphDependencies:
-    retriever: Retriever | HybridRetriever
-
-    rerank: Callable[
-        [
-            str,
-            list[Document],
-            int,
-        ],
-        tuple[list[Document], float],
-    ] | None = None
-
-    # THÊM:
-    # Evidence Judge nhận query + các chunk sau reranking
-    # và xác định chunk nào thực sự có thể dùng làm evidence.
-    #
-    # Tách Evidence Judge thành dependency để:
-    # - dễ test bằng fake function
-    # - không khóa graph vào một model cụ thể
-    # - sau này có thể thay LLM Judge bằng model/API khác.
-    evidence_judge: Callable[
-        [
-            str,
-            list[Document],
-        ],
-        EvidenceJudgeResult,
-    ] = judge_evidence
-
-    generate: Callable[
-        [
-            str,
-            list[Document],
-        ],
-        str,
-    ] = generate_answer
-
-    query_checker: Callable[
-        [str],
-        Any,
-    ] = check_query
-
-    store: ConversationStore | None = None
-
-    turn_factory: Callable[
-        ...,
-    ] | None = None
+REFUSAL_MESSAGES: dict[str, str] = {
+    # --- check_query ---
+    "empty_query": "Vui lòng nhập câu hỏi.",
+    "query_too_long": "Câu hỏi quá dài. Vui lòng rút gọn và thử lại.",
+    "meaningless_query": "Tôi chưa hiểu câu hỏi. Vui lòng diễn đạt lại.",
+    "unsafe_or_out_of_scope": "Tôi không thể hỗ trợ yêu cầu này.",
+    "out_of_scope": "Câu hỏi này nằm ngoài phạm vi tài liệu hiện có.",
+    # --- lỗi hệ thống ---
+    "evidence_judge_error": _TECHNICAL_ERROR_MESSAGE,
+    "generation_error": _TECHNICAL_ERROR_MESSAGE,
+    # Các lý do còn lại (no_retrieved_chunks, low_retrieval_quality,
+    # insufficient_evidence, empty_answer, no_evidence, no_context,
+    # missing_citations, ...) -> NO_EVIDENCE_MESSAGE.
+}
 
 
-def build_rag_graph(
-    deps: GraphDependencies,
-):
+def _short_id(chunk: Document) -> str:
+    """Id ngắn gọn của chunk để in log (vd: doc56_p3_c002)."""
+    meta = chunk.metadata
+    raw = meta.get("chunk_id") or meta.get("qdrant_point_id") or "?"
+    return str(raw).replace("_semantic", "")
 
-    # HYBRID RETRIEVER
-    retriever = (
-        deps.retriever
-        if isinstance(
-            deps.retriever,
-            HybridRetriever,
-        )
-        else HybridRetriever(
-            deps.retriever
-        )
+
+# THÊM:
+# Key dùng để dedupe chunk khi gộp evidence_chunks từ nhiều branch
+def _doc_key(chunk: Document) -> str:
+    meta = chunk.metadata
+    return str(
+        meta.get("chunk_id")
+        or meta.get("qdrant_point_id")
+        or f"{meta.get('document_id', '')}_{meta.get('chunk_index', '')}"
     )
 
-    reranker_instance = None
 
-    # Reranking wrapper
+# Kiểu dependency
+class RetrieverLike(Protocol):
+    def retrieve(self, query: str, k: int = 8) -> list[Document]: ...
+
+
+class RerankerLike(Protocol):
     def rerank(
-        query: str,
-        docs: list[Document],
-    ) -> list[Document]:
-
-        nonlocal reranker_instance
-
-        if deps.rerank is not None:
-
-            ranked = deps.rerank(
-                query,
-                docs,
-                RERANK_TOP_K,
-            )
-
-            if isinstance(
-                ranked,
-                tuple,
-            ):
-                return ranked[0]
-
-            return ranked
-
-        from .reranking import Reranker
-
-        if reranker_instance is None:
-            reranker_instance = Reranker()
-
-        ranked, _ = (
-            reranker_instance.rerank(
-                query,
-                docs,
-                top_k=RERANK_TOP_K,
-            )
-        )
-
-        return ranked
+            self,
+            query: str,
+            documents: list[Document],
+            top_k: int = 5,
+    ) -> tuple[list[Document], float]: ...
 
 
-    # 1. INPUT VALIDATION + QUERY REWRITE
-    def validation_node(
-        state: RAGState,
-    ) -> dict[str, Any]:
-
-        query = (
-            state
-            .get("query", "")
-            .strip()
-        )
-
-        result = deps.query_checker(
-            query
-        )
-
-        if hasattr(
-            result,
-            "allowed",
-        ):
-
-            query_allowed = (
-                result.allowed
-            )
-
-            refusal_reason = (
-                result.reason
-            )
-
-        elif isinstance(
-            result,
-            dict,
-        ):
-
-            query_allowed = result.get(
-                "query_allowed",
-                result.get(
-                    "allowed",
-                    False,
-                ),
-            )
-
-            refusal_reason = (
-                result.get(
-                    "refusal_reason"
-                )
-            )
-
-        else:
-
-            query_allowed = bool(
-                result
-            )
-
-            refusal_reason = None
-
-        history = state.get(
-            "history",
-            [],
-        )
-
-        rewritten_query = None
-
-        retrieval_query = query
-
-        followup_prefixes = (
-            "còn",
-            "thế",
-            "nó",
-            "điều này",
-            "vậy",
-            "cái này",
-            "cái đó",
-            "phần này",
-            "loại đó",
-            "mục đó",
-        )
-
-        followup_terms = (
-            "này",
-            "đó",
-            "đây",
-            "kia",
-            "trên",
-            "dưới",
-        )
-
-        clean = query.lower()
-
-        is_followup = (
-            bool(history)
-            and (
-                clean.startswith(
-                    followup_prefixes
-                )
-                or clean.endswith(
-                    followup_terms
-                )
-            )
-        )
-
-        if is_followup:
-
-            previous = history[-1]
-
-            if isinstance(
-                previous,
-                dict,
-            ):
-
-                previous_query = (
-                    previous.get(
-                        "rewritten_query"
-                    )
-                    or previous.get(
-                        "query"
-                    )
-                    or ""
-                )
-
-            else:
-
-                previous_query = (
-                    getattr(
-                        previous,
-                        "rewritten_query",
-                        None,
-                    )
-                    or getattr(
-                        previous,
-                        "query",
-                        "",
-                    )
-                )
-
-            if previous_query:
-
-                rewritten_query = (
-                    f"{previous_query}. "
-                    f"Câu hỏi tiếp theo: "
-                    f"{query}"
-                )
-
-                retrieval_query = (
-                    rewritten_query
-                )
-
-        return {
-            "query_allowed": (
-                query_allowed
-            ),
-
-            "refusal_reason": (
-                refusal_reason
-            ),
-
-            "retrieval_query": (
-                retrieval_query
-            ),
-
-            "rewritten_query": (
-                rewritten_query
-            ),
-
-            "needs_rewrite": (
-                rewritten_query
-                is not None
-            ),
-        }
+GenerateFn = Callable[[str, list[Document]], str]
 
 
-    # 2. HYBRID RETRIEVAL
-    # Qdrant
-    #   ├── Vector Search
-    #   └── Keyword Search
-    #           ↓
-    #          RRF
+# Kiểu hàm sinh câu trả lời cho câu hỏi so sánh. Nhận query gốc +
+# danh sách (sub_query, evidence_chunks) theo từng đối tượng.
+ComparisonGenerateFn = Callable[[str, list[tuple[str, list[Document]]]], str]
 
-    def retrieval_node(
-        state: RAGState,
-    ) -> dict[str, Any]:
-
-        documents = retriever.retrieve(
-            state["retrieval_query"],
-            k=8,
-        )
-
-        return {
-            "retrieved_chunks": documents,
-            "route": "hybrid",
-        }
+QueryCheckFn = Callable[[str], QueryCheckResult]
+EvidenceJudgeFn = Callable[[str, list[Document]], EvidenceJudgeResult]
+AnswerValidatorFn = Callable[[str, list[Document]], dict[str, Any]]
+SaveTurnFn = Callable[[str, str, str, list[dict[str, Any]]], None]
 
 
-    # 3. RERANKING
-    def reranking_node(
-        state: RAGState,
-    ) -> dict[str, Any]:
+# Build graph
+def build_rag_graph(
+        *,
+        retriever: RetrieverLike,
+        reranker: RerankerLike,
+        generate_fn: GenerateFn,
+        comparison_generate_fn: ComparisonGenerateFn,
+        query_checker: QueryCheckFn = check_query,
+        evidence_judge: EvidenceJudgeFn = judge_evidence,
+        answer_validator: AnswerValidatorFn = validate_answer,
+        save_turn_fn: SaveTurnFn | None = None,
+        retrieve_k: int = DEFAULT_RETRIEVE_K,
+        rerank_top_k: int = DEFAULT_RERANK_TOP_K,
+        min_rerank_score: float = DEFAULT_MIN_RERANK_SCORE,
+):
+    """
+    Tạo và compile LangGraph cho RAG pipeline.
 
-        docs = [
-            doc
-            for doc in state.get(
-                "retrieved_chunks",
-                [],
-            )
-            if (
-                doc.page_content
-                and doc.page_content.strip()
-            )
-        ]
+    Args:
+        retriever:        HybridRetriever (hoặc bất kỳ object có .retrieve(query, k)).
+        reranker:         Reranker (có .rerank(query, documents, top_k)).
+        generate_fn:      hàm (query, evidence_chunks) -> câu trả lời thô của LLM
+                           cho câu hỏi ĐƠN (không so sánh).
+        comparison_generate_fn: - hàm (query, list[(sub_query,
+                           evidence_chunks)]) -> câu trả lời thô cho câu hỏi
+                           SO SÁNH nhiều đối tượng.
+        query_checker:    hàm kiểm tra query đầu vào (mặc định validation.check_query).
+        evidence_judge:   hàm chọn evidence (mặc định evidence.judge_evidence).
+        answer_validator: hàm validate câu trả lời + gắn citation.
+        save_turn_fn:     hàm lưu lượt hội thoại (session_id, query, answer, citations).
+        retrieve_k:       số chunk lấy từ hybrid retrieval (áp dụng cho cả
+                           query đơn lẫn từng sub_query khi so sánh).
+        rerank_top_k:     số chunk giữ lại sau rerank (áp dụng cho cả 2 trường hợp trên).
+        min_rerank_score: ngưỡng rerank score để coi retrieval là "good".
+    """
 
-        if not docs:
+    # Helpers
+    def effective_query(state: RAGState) -> str:
+        # retrieval_query là query đã chuẩn hóa (sau này có thể là query đã rewrite).
+        # Với câu hỏi so sánh, đây vẫn là câu hỏi GỐC (ghép), dùng làm "query"
+        # truyền vào comparison_generate_fn - còn từng sub_query nằm riêng
+        # trong mỗi phần tử của comparison_branches.
+        return (state.get("retrieval_query") or state.get("query") or "").strip()
 
+    # Nodes
+    # 1. VALIDATION — check_query
+    def validate_query_node(state: RAGState) -> dict[str, Any]:
+        query = state.get("query", "")
+        result = query_checker(query)
+
+        if not result.allowed:
+            logger.info("validate_query: refused (%s)", result.reason)
             return {
-                "reranked_chunks": [],
+                "query_allowed": False,
+                "refusal_reason": result.reason or "query_not_allowed",
             }
 
         return {
-            "reranked_chunks": rerank(
-                state["retrieval_query"],
-                docs,
-            ),
+            "query_allowed": True,
+            "retrieval_query": " ".join(query.split()),
         }
 
+    # 2. RETRIEVAL — Hybrid Search (semantic + keyword + RRF)
+    #
+    # nếu phát hiện câu hỏi so sánh nhiều đối tượng,
+    # KHÔNG gộp phẳng kết quả retrieve của các sub_query lại thành 1
+    # list như bản trước nữa (đó là cách nửa vời, vẫn rerank chung 1
+    # điểm bằng query gốc, làm loãng tín hiệu). Thay vào đó, mỗi
+    # sub_query được lưu thành 1 "branch" riêng, và rerank_node/
+    # check_quality_node/select_evidence_node bên dưới sẽ xử lý ĐỘC LẬP từng branch bằng đúng sub_query của nó.
+    def retrieve_node(state: RAGState) -> dict[str, Any]:
+        query = effective_query(state)
 
-    # 4. RETRIEVAL QUALITY
-    def retrieval_quality_node(
-        state: RAGState,
-    ) -> dict[str, Any]:
+        sub_queries = split_comparison_query(query)
 
-        docs = state.get(
-            "reranked_chunks",
-            [],
-        )
+        if sub_queries:
+            logger.info(
+                "retrieve: phát hiện câu hỏi so sánh, sub_queries=%s",
+                sub_queries,
+            )
 
-        if not docs:
+            branches: list[dict[str, Any]] = []
+
+            for sub_query in sub_queries:
+                sub_chunks = retriever.retrieve(sub_query, k=retrieve_k)
+
+                logger.info(
+                    "retrieve[%s]: %d chunks", sub_query, len(sub_chunks)
+                )
+                logger.info(
+                    "retrieve[%s] ids: %s",
+                    sub_query,
+                    ", ".join(_short_id(c) for c in sub_chunks),
+                )
+
+                branches.append(
+                    {
+                        "sub_query": sub_query,
+                        "retrieved_chunks": sub_chunks,
+                    }
+                )
 
             return {
-                "retrieval_quality": (
-                    "insufficient"
-                ),
-                "valid": False,
+                "is_comparison": True,
+                "comparison_branches": branches,
+                "sub_queries": sub_queries,
+                "hybrid_attempted": True,
             }
 
-
-        # CHANGE:
-        # Không còn kiểm tra đơn giản:
-        # "có rrf_score => good".
-        #
-        # Trước đây hybrid retrieval luôn thêm rrf_score
-        # cho các document được trả về.
-        # Vì vậy kể cả query không liên quan vẫn có thể
-        # bị đánh dấu là "good" và tiếp tục gọi LLM.
-        #
-        # Thay vào đó lấy rerank_score của document
-        # đứng đầu sau bước reranking để đánh giá
-        # mức độ liên quan của retrieval result.
-
-        top_score = float(
-            docs[0].metadata.get(
-                "rerank_score",
-                0.0,
-            )
-        )
-
-
-        # CHANGE:
-        # Nếu top rerank_score đạt threshold thì
-        # retrieval được xem là đủ tốt để đưa cho LLM.
-        #
-        # Nếu thấp hơn threshold thì dừng tại đây
-        # và chuyển sang refusal, không gọi LLM.
-
-        if top_score >= RERANK_SCORE_THRESHOLD:
-
-            quality = "good"
-
-        else:
-
-            quality = "insufficient"
-
-
+        # Không phải câu hỏi so sánh -> hành vi y hệt code cũ.
+        chunks = retriever.retrieve(query, k=retrieve_k)
+        logger.info("retrieve: %d chunks", len(chunks))
+        logger.info("retrieve ids: %s", ", ".join(_short_id(c) for c in chunks))
         return {
-            "retrieval_quality": quality,
-
-            # CHANGE:
-            # Lưu lại score để debug/log/evaluation.
-            # Sau này có thể dùng giá trị này để
-            # đánh giá và điều chỉnh threshold.
-
-            "retrieval_top_score": top_score,
-
-            "valid": (
-                quality == "good"
-            ),
+            "is_comparison": False,
+            "retrieved_chunks": chunks,
+            "hybrid_attempted": True,
+            "sub_queries": [],
         }
 
-
-    # THÊM:
-    # 5. EVIDENCE SELECTION
+    # 3. RERANKING — CrossEncoder
     #
-    # Reranking chỉ xác định document nào có mức độ liên quan cao.
-    # Nó chưa đảm bảo document đó thực sự chứa bằng chứng để trả lời query.
-    #
-    # Node này dùng Evidence Judge để chọn ra các chunk
-    # thực sự hỗ trợ câu hỏi.
-    def evidence_selection_node(
-        state: RAGState,
-    ) -> dict[str, Any]:
+    # nếu is_comparison=True, rerank TỪNG branch bằng
+    # ĐÚNG sub_query của branch đó (không dùng chung query gốc như
+    # trước) - đây chính là fix cho Bug 3 (rerank vẫn dùng câu hỏi
+    # ghép làm loãng tín hiệu, khiến case "so sánh tỷ lệ thất nghiệp"
+    # bị chặn ở check_quality dù retrieve đã đúng).
+    def rerank_node(state: RAGState) -> dict[str, Any]:
 
-        query = state.get(
-            "retrieval_query",
-            "",
+        if state.get("is_comparison"):
+            branches = state.get("comparison_branches", [])
+            updated_branches: list[dict[str, Any]] = []
+
+            for branch in branches:
+                sub_query = branch["sub_query"]
+                sub_chunks = branch.get("retrieved_chunks", [])
+
+                reranked, latency_ms = reranker.rerank(
+                    sub_query,
+                    sub_chunks,
+                    top_k=rerank_top_k,
+                )
+
+                logger.info(
+                    "rerank[%s]: %d -> %d chunks (%.0f ms)",
+                    sub_query,
+                    len(sub_chunks),
+                    len(reranked),
+                    latency_ms,
+                )
+                logger.info(
+                    "rerank[%s] scores: %s",
+                    sub_query,
+                    ", ".join(
+                        f"{_short_id(c)}={c.metadata.get('rerank_score', 0.0):.3f}"
+                        for c in reranked
+                    ),
+                )
+
+                branch = dict(branch)
+                branch["reranked_chunks"] = reranked
+                branch["rerank_latency_ms"] = latency_ms
+                updated_branches.append(branch)
+
+            return {"comparison_branches": updated_branches}
+
+        # Không phải câu hỏi so sánh -> hành vi y hệt code cũ.
+        chunks = state.get("retrieved_chunks", [])
+        reranked, latency_ms = reranker.rerank(
+            effective_query(state),
+            chunks,
+            top_k=rerank_top_k,
+        )
+        logger.info(
+            "rerank: %d -> %d chunks (%.0f ms)",
+            len(chunks),
+            len(reranked),
+            latency_ms,
+        )
+        logger.info(
+            "rerank scores: %s",
+            ", ".join(
+                f"{_short_id(c)}={c.metadata.get('rerank_score', 0.0):.3f}"
+                for c in reranked
+            ),
+        )
+        return {
+            "reranked_chunks": reranked,
+            "rerank_latency_ms": latency_ms,
+        }
+
+    # 4. RETRIEVAL QUALITY — kiểm tra rerank score
+    #
+    # với câu hỏi so sánh, tính quality RIÊNG cho từng
+    # branch. Chỉ refuse toàn bộ khi TẤT CẢ các branch đều "poor" -
+    # nếu có ít nhất 1 branch "good", vẫn cho đi tiếp để branch đó có
+    # cơ hội trả lời (branch "poor" sẽ được đánh dấu thiếu dữ liệu ở
+    # select_evidence_node, không tốn thêm lời gọi Evidence Judge).
+    def check_quality_node(state: RAGState) -> dict[str, Any]:
+
+        if state.get("is_comparison"):
+            branches = state.get("comparison_branches", [])
+            updated_branches: list[dict[str, Any]] = []
+            any_good = False
+            any_chunks = False
+
+            for branch in branches:
+                sub_query = branch["sub_query"]
+                chunks = branch.get("reranked_chunks", [])
+
+                if chunks:
+                    any_chunks = True
+                    top_score = max(
+                        float(c.metadata.get("rerank_score", float("-inf")))
+                        for c in chunks
+                    )
+                else:
+                    top_score = 0.0
+
+                quality = "good" if top_score >= min_rerank_score else "poor"
+                if quality == "good":
+                    any_good = True
+
+                logger.info(
+                    "check_quality[%s]: %s (top=%.4f)",
+                    sub_query,
+                    quality,
+                    top_score,
+                )
+
+                branch = dict(branch)
+                branch["top_rerank_score"] = top_score
+                branch["retrieval_quality"] = quality
+                updated_branches.append(branch)
+
+            overall_top_score = max(
+                (b["top_rerank_score"] for b in updated_branches),
+                default=0.0,
+            )
+
+            if not any_good:
+                return {
+                    "comparison_branches": updated_branches,
+                    "retrieval_quality": "poor",
+                    "top_rerank_score": overall_top_score,
+                    "refusal_reason": (
+                        "low_retrieval_quality"
+                        if any_chunks
+                        else "no_retrieved_chunks"
+                    ),
+                }
+
+            return {
+                "comparison_branches": updated_branches,
+                "retrieval_quality": "good",
+                "top_rerank_score": overall_top_score,
+            }
+
+        # Không phải câu hỏi so sánh -> hành vi y hệt code cũ.
+        chunks = state.get("reranked_chunks", [])
+
+        if not chunks:
+            return {
+                "retrieval_quality": "poor",
+                "top_rerank_score": 0.0,
+                "refusal_reason": "no_retrieved_chunks",
+            }
+
+        top_score = max(
+            float(chunk.metadata.get("rerank_score", float("-inf")))
+            for chunk in chunks
         )
 
-        docs = state.get(
-            "reranked_chunks",
-            [],
-        )
+        if top_score >= min_rerank_score:
+            logger.info("check_quality: good (top=%.4f)", top_score)
+            return {
+                "retrieval_quality": "good",
+                "top_rerank_score": top_score,
+            }
 
-        if not docs:
+        logger.info(
+            "check_quality: poor (top=%.4f < %.4f)", top_score, min_rerank_score
+        )
+        return {
+            "retrieval_quality": "poor",
+            "top_rerank_score": top_score,
+            "refusal_reason": "low_retrieval_quality",
+        }
+
+    # 5. EVIDENCE SELECT — Evidence Judge
+    # với câu hỏi so sánh, chạy Evidence Judge RIÊNG
+    # cho từng branch có quality="good" (branch "poor" bị bỏ qua,
+    # không tốn lời gọi Judge, tự đánh dấu evidence_sufficient=False
+    # với lý do "low_retrieval_quality"). Chỉ refuse toàn bộ khi
+    # KHÔNG branch nào có evidence_sufficient=True - đây chính là cơ
+    # chế cho phép trả lời "1 bên có data, 1 bên không" ở generate_node.
+    def select_evidence_node(state: RAGState) -> dict[str, Any]:
+
+        if state.get("is_comparison"):
+            branches = state.get("comparison_branches", [])
+            updated_branches: list[dict[str, Any]] = []
+            any_sufficient = False
+
+            for branch in branches:
+                sub_query = branch["sub_query"]
+
+                if branch.get("retrieval_quality") != "good":
+                    branch = dict(branch)
+                    branch["evidence_chunks"] = []
+                    branch["evidence_sufficient"] = False
+                    branch["evidence_reason"] = "low_retrieval_quality"
+                    updated_branches.append(branch)
+                    logger.info(
+                        "select_evidence[%s]: skip (retrieval_quality=poor)",
+                        sub_query,
+                    )
+                    continue
+
+                chunks = branch.get("reranked_chunks", [])
+
+                try:
+                    result = evidence_judge(sub_query, chunks)
+                except Exception:
+                    logger.exception(
+                        "Evidence Judge failed for branch '%s'", sub_query
+                    )
+                    branch = dict(branch)
+                    branch["evidence_chunks"] = []
+                    branch["evidence_sufficient"] = False
+                    branch["evidence_reason"] = "evidence_judge_error"
+                    updated_branches.append(branch)
+                    continue
+
+                evidence_chunks = [
+                    chunks[index]
+                    for index in result.supported_indices
+                    if 0 <= index < len(chunks)
+                ]
+                sufficient = bool(result.sufficient and evidence_chunks)
+
+                if sufficient:
+                    any_sufficient = True
+
+                logger.info(
+                    "select_evidence[%s]: sufficient=%s indices=%s reason=%s",
+                    sub_query,
+                    sufficient,
+                    result.supported_indices,
+                    result.reason,
+                )
+
+                branch = dict(branch)
+                branch["evidence_chunks"] = evidence_chunks
+                branch["evidence_sufficient"] = sufficient
+                branch["evidence_reason"] = result.reason
+                updated_branches.append(branch)
+
+            if not any_sufficient:
+                all_errored = all(
+                    b.get("evidence_reason") == "evidence_judge_error"
+                    for b in updated_branches
+                )
+                return {
+                    "comparison_branches": updated_branches,
+                    "evidence_sufficient": False,
+                    "refusal_reason": (
+                        "evidence_judge_error"
+                        if all_errored
+                        else "insufficient_evidence"
+                    ),
+                }
+
+            return {
+                "comparison_branches": updated_branches,
+                "evidence_sufficient": True,
+            }
+
+        # Không phải câu hỏi so sánh -> hành vi y hệt code cũ.
+        chunks = state.get("reranked_chunks", [])
+
+        try:
+            result = evidence_judge(effective_query(state), chunks)
+        except Exception:
+            # Fail-closed: không chắc có evidence -> không cho generation.
+            logger.exception("Evidence Judge failed")
             return {
                 "evidence_chunks": [],
                 "evidence_sufficient": False,
+                "refusal_reason": "evidence_judge_error",
             }
 
-        result = deps.evidence_judge(
-            query,
-            docs,
+        # Judge chỉ trả về index; Document thật vẫn do Python giữ nguyên.
+        evidence_chunks = [
+            chunks[index]
+            for index in result.supported_indices
+            if 0 <= index < len(chunks)
+        ]
+        sufficient = bool(result.sufficient and evidence_chunks)
+
+        logger.info(
+            "select_evidence: sufficient=%s indices=%s reason=%s",
+            sufficient,
+            result.supported_indices,
+            result.reason,
         )
 
-        supported_chunks: list[Document] = []
+        update: dict[str, Any] = {
+            "evidence_chunks": evidence_chunks,
+            "evidence_sufficient": sufficient,
+            "evidence_reason": result.reason,
+        }
+        if not sufficient:
+            update["refusal_reason"] = "insufficient_evidence"
+        return update
 
-        # THÊM:
-        # Evidence Judge chỉ trả về index của các chunk được chọn.
-        # Python chịu trách nhiệm lấy Document thật từ danh sách
-        # reranked_chunks, tránh để LLM tự tạo hoặc sửa nội dung evidence.
-        for index in result.supported_indices:
+    # 6. GENERATE — LLM chỉ nhìn evidence_chunks
+    #
+    # với câu hỏi so sánh, gọi comparison_generate_fn
+    # với danh sách (sub_query, evidence_chunks) của TẤT CẢ branch
+    # (kể cả branch evidence_chunks rỗng - để LLM biết đối tượng đó
+    # thiếu dữ liệu và nêu rõ trong câu trả lời theo rule 3 của COMPARISON_SYSTEM_PROMPT_TEMPLATE).
+    def generate_node(state: RAGState) -> dict[str, Any]:
 
-            if (
-                isinstance(index, int)
-                and 0 <= index < len(docs)
-            ):
-                supported_chunks.append(
-                    docs[index]
+        if state.get("is_comparison"):
+            branches = state.get("comparison_branches", [])
+            branch_inputs = [
+                (branch["sub_query"], branch.get("evidence_chunks", []))
+                for branch in branches
+            ]
+
+            try:
+                answer = comparison_generate_fn(
+                    effective_query(state),
+                    branch_inputs,
                 )
+            except Exception:
+                logger.exception("Comparison generation failed")
+                return {
+                    "raw_answer": "",
+                    "answer": "",
+                    "refusal_reason": "generation_error",
+                }
 
-        # THÊM:
-        # Nếu Judge đánh dấu sufficient nhưng không chọn được
-        # chunk hợp lệ thì không cho phép tiếp tục generation.
-        evidence_sufficient = (
-            result.sufficient
-            and bool(supported_chunks)
-        )
+            return {
+                "raw_answer": answer,
+                "answer": answer,
+            }
+
+        # Không phải câu hỏi so sánh -> hành vi y hệt code cũ.
+        try:
+            answer = generate_fn(
+                effective_query(state),
+                state.get("evidence_chunks", []),
+            )
+        except Exception:
+            logger.exception("Generation failed")
+            return {
+                "raw_answer": "",
+                "answer": "",
+                "refusal_reason": "generation_error",
+            }
 
         return {
-            "evidence_chunks": supported_chunks,
-            "evidence_sufficient": evidence_sufficient,
+            "raw_answer": answer,
+            "answer": answer,
         }
 
+    # 7. VALIDATE ANSWER — kiểm tra output + tạo citation từ metadata thật
+    #
+    # với câu hỏi so sánh, citation phải gộp evidence_chunks
+    # từ TẤT CẢ branch có sufficient=True (dedupe theo _doc_key để tránh
+    # trùng nếu 2 branch vô tình cùng chọn 1 chunk).
+    def validate_answer_node(state: RAGState) -> dict[str, Any]:
 
-    # 6. GENERATION
-    def generation_node(
-        state: RAGState,
-    ) -> dict[str, Any]:
+        if state.get("is_comparison"):
+            branches = state.get("comparison_branches", [])
+            merged_evidence: list[Document] = []
+            seen_keys: set[str] = set()
 
-        # CHANGE:
-        # Trước đây LLM nhận toàn bộ reranked_chunks.
-        # Bây giờ chỉ truyền evidence_chunks đã được Evidence Selection
-        # xác định là có thể dùng để trả lời câu hỏi.
-        return {
-            "answer": deps.generate(
-                state[
-                    "retrieval_query"
-                ],
-                state[
-                    "evidence_chunks"
-                ],
+            for branch in branches:
+                for doc in branch.get("evidence_chunks", []):
+                    key = _doc_key(doc)
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        merged_evidence.append(doc)
+
+            result = answer_validator(
+                state.get("answer", ""),
+                merged_evidence,
             )
-        }
 
+            if result.get("valid"):
+                return {
+                    "valid": True,
+                    "answer": result["answer"],
+                    "citations": result.get("citations", []),
+                    "guardrail_reason": None,
+                }
 
-    # 7. OUTPUT VALIDATION
-    def validate_answer_node(
-        state: RAGState,
-    ) -> dict[str, Any]:
+            reason = result.get("reason") or "invalid_answer"
+            logger.info("validate_answer: invalid (%s)", reason)
+            return {
+                "valid": False,
+                "guardrail_reason": reason,
+                "refusal_reason": reason,
+            }
 
-        # CHANGE:
-        # Citation và validation phải dựa trên chính evidence
-        # được đưa cho LLM, không phải toàn bộ reranked_chunks.
-        return validate_answer(
-            state.get(
-                "answer",
-                "",
-            ),
-            state.get(
-                "evidence_chunks",
-                [],
-            ),
+        # Không phải câu hỏi so sánh -> hành vi y hệt code cũ.
+        result = answer_validator(
+            state.get("answer", ""),
+            state.get("evidence_chunks", []),
         )
 
+        if result.get("valid"):
+            return {
+                "valid": True,
+                "answer": result["answer"],
+                "citations": result.get("citations", []),
+                "guardrail_reason": None,
+            }
 
-    # 8. REFUSAL
-    def refuse_node(
-        state: RAGState,
-    ) -> dict[str, Any]:
-
-        refusal_reason = (
-            state.get(
-                "refusal_reason"
-            )
-        )
-
-        validation_reason = (
-            state.get("reason")
-        )
-
-        if refusal_reason:
-
-            answer = (
-                "Tôi không thể xử lý "
-                "yêu cầu này. "
-                "Vui lòng hỏi về tài liệu "
-                "nội bộ một cách an toàn."
-            )
-
-        elif validation_reason in (
-            "empty_answer",
-            "no_evidence",
-            "no_context",
-            "missing_citations",
-        ):
-
-            answer = (
-                NO_EVIDENCE_MESSAGE
-            )
-
-        else:
-
-            answer = (
-                NO_EVIDENCE_MESSAGE
-            )
-
+        reason = result.get("reason") or "invalid_answer"
+        logger.info("validate_answer: invalid (%s)", reason)
         return {
             "valid": False,
-            "answer": answer,
+            "guardrail_reason": reason,
+            "refusal_reason": reason,
+        }
+
+    # 8. SAVE TURN — chỉ chạy khi câu trả lời hợp lệ
+    def save_turn_node(state: RAGState) -> dict[str, Any]:
+        query = state.get("query", "")
+        answer = state.get("answer", "")
+        citations = state.get("citations", [])
+
+        if save_turn_fn is not None:
+            try:
+                save_turn_fn(
+                    state.get("session_id", "default"),
+                    query,
+                    answer,
+                    citations,
+                )
+            except Exception:
+                # Lỗi lưu lịch sử không được làm hỏng câu trả lời đã hợp lệ.
+                logger.exception("Failed to save turn")
+
+        history = list(state.get("history", []))
+        history.append({"role": "user", "content": query})
+        history.append({"role": "assistant", "content": answer})
+
+        return {
+            "history": history,
+            "route": "answer",
+        }
+
+    # REFUSE — điểm dừng chung cho mọi nhánh từ chối
+    def refuse_node(state: RAGState) -> dict[str, Any]:
+        reason = state.get("refusal_reason") or "unknown"
+        return {
+            "answer": REFUSAL_MESSAGES.get(reason, NO_EVIDENCE_MESSAGE),
             "citations": [],
+            "valid": False,
+            "refusal_reason": reason,
             "route": "refuse",
         }
 
+    # Routers (conditional edges)
+    #
+    # GHI CHÚ (Hướng B): các router bên dưới KHÔNG cần sửa gì, vì cả
+    # nhánh so sánh lẫn nhánh câu hỏi đơn đều ghi field top-level
+    # "retrieval_quality" và "evidence_sufficient" giống nhau về mặt
+    # tên field (chỉ khác cách tính bên trong check_quality_node/
+    # select_evidence_node ở trên) - router chỉ đọc field top-level
+    # nên dùng chung được cho cả 2 nhánh.
+    def route_after_query_check(state: RAGState) -> str:
+        return "retrieve" if state.get("query_allowed") else "refuse"
 
-    # 9. SAVE CONVERSATION
-    def save_node(
-        state: RAGState,
-    ) -> dict[str, Any]:
-
-        if (
-            deps.store is not None
-            and deps.turn_factory is not None
-        ):
-
-            turn = deps.turn_factory(
-                query=state["query"],
-                answer=state["answer"],
-                rewritten_query=state.get(
-                    "rewritten_query"
-                ),
-
-                # CHANGE:
-                # Conversation context nên lưu evidence thực sự
-                # được sử dụng để tạo answer, thay vì toàn bộ
-                # reranked_chunks.
-                context=state.get(
-                    "evidence_chunks",
-                    [],
-                ),
-            )
-
-            deps.store.append(
-                state["session_id"],
-                turn,
-            )
-
-        return {}
-
-
-    # BUILD GRAPH
-    graph = StateGraph(
-        RAGState
-    )
-
-    nodes = (
-        (
-            "validation",
-            validation_node,
-        ),
-        (
-            "retrieval",
-            retrieval_node,
-        ),
-        (
-            "reranking",
-            reranking_node,
-        ),
-        (
-            "retrieval_quality",
-            retrieval_quality_node,
-        ),
-
-        # THÊM:
-        # Node Evidence Selection nằm giữa
-        # Retrieval Quality và Generation.
-        (
-            "evidence_selection",
-            evidence_selection_node,
-        ),
-
-        (
-            "generation",
-            generation_node,
-        ),
-        (
-            "validate_answer",
-            validate_answer_node,
-        ),
-        (
-            "refuse",
-            refuse_node,
-        ),
-        (
-            "save_turn",
-            save_node,
-        ),
-    )
-
-    for name, node in nodes:
-
-        graph.add_node(
-            name,
-            node,
+    def route_after_quality(state: RAGState) -> str:
+        return (
+            "select_evidence"
+            if state.get("retrieval_quality") == "good"
+            else "refuse"
         )
 
+    def route_after_evidence(state: RAGState) -> str:
+        return "generate" if state.get("evidence_sufficient") else "refuse"
 
-    # EDGES
-    graph.add_edge(
-        START,
-        "validation",
+    def route_after_generate(state: RAGState) -> str:
+        # generate_node chỉ set refusal_reason khi LLM bị lỗi.
+        return "refuse" if state.get("refusal_reason") else "validate_answer"
+
+    def route_after_validation(state: RAGState) -> str:
+        return "save_turn" if state.get("valid") else "refuse"
+
+    # Wiring
+    builder = StateGraph(RAGState)
+
+    builder.add_node("validate_query", validate_query_node)
+    builder.add_node("retrieve", retrieve_node)
+    builder.add_node("rerank", rerank_node)
+    builder.add_node("check_quality", check_quality_node)
+    builder.add_node("select_evidence", select_evidence_node)
+    builder.add_node("generate", generate_node)
+    builder.add_node("validate_answer", validate_answer_node)
+    builder.add_node("save_turn", save_turn_node)
+    builder.add_node("refuse", refuse_node)
+
+    builder.add_edge(START, "validate_query")
+
+    builder.add_conditional_edges(
+        "validate_query",
+        route_after_query_check,
+        {"retrieve": "retrieve", "refuse": "refuse"},
     )
 
-    graph.add_conditional_edges(
-        "validation",
-        lambda state: (
-            "retrieval"
-            if state[
-                "query_allowed"
-            ]
-            else "refuse"
-        ),
+    builder.add_edge("retrieve", "rerank")
+    builder.add_edge("rerank", "check_quality")
+
+    builder.add_conditional_edges(
+        "check_quality",
+        route_after_quality,
+        {"select_evidence": "select_evidence", "refuse": "refuse"},
     )
 
-    graph.add_edge(
-        "retrieval",
-        "reranking",
+    builder.add_conditional_edges(
+        "select_evidence",
+        route_after_evidence,
+        {"generate": "generate", "refuse": "refuse"},
     )
 
-    graph.add_edge(
-        "reranking",
-        "retrieval_quality",
+    builder.add_conditional_edges(
+        "generate",
+        route_after_generate,
+        {"validate_answer": "validate_answer", "refuse": "refuse"},
     )
 
-    # CHANGE:
-    # Retrieval Quality không đi thẳng tới Generation nữa.
-    # Kết quả phải đi qua Evidence Selection trước.
-    graph.add_conditional_edges(
-        "retrieval_quality",
-        lambda state: (
-            "evidence_selection"
-            if state[
-                "retrieval_quality"
-            ] == "good"
-            else "refuse"
-        ),
-    )
-
-    # THÊM:
-    # Chỉ khi Evidence Selection xác định đủ evidence
-    # mới cho phép gọi LLM.
-    graph.add_conditional_edges(
-        "evidence_selection",
-        lambda state: (
-            "generation"
-            if state.get(
-                "evidence_sufficient",
-                False,
-            )
-            else "refuse"
-        ),
-    )
-
-    graph.add_edge(
-        "generation",
+    builder.add_conditional_edges(
         "validate_answer",
+        route_after_validation,
+        {"save_turn": "save_turn", "refuse": "refuse"},
     )
 
-    graph.add_conditional_edges(
-        "validate_answer",
-        lambda state: (
-            "save_turn"
-            if state["valid"]
-            else "refuse"
-        ),
-    )
+    builder.add_edge("save_turn", END)
+    builder.add_edge("refuse", END)
 
-    graph.add_edge(
-        "refuse",
-        "save_turn",
-    )
-
-    graph.add_edge(
-        "save_turn",
-        END,
-    )
-
-    return graph.compile()
+    return builder.compile()

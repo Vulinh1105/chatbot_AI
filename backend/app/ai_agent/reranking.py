@@ -4,6 +4,7 @@ from langchain_core.documents import Document
 from sentence_transformers import CrossEncoder
 
 
+# sd cross model
 DEFAULT_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
 DEFAULT_TOP_K = 5
 DEFAULT_BATCH_SIZE = 8
