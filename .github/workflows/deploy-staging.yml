@@ -12,6 +12,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Check both CIs passed
@@ -19,11 +22,12 @@ jobs:
         if: ${{ github.event_name == 'workflow_run' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          echo "Checking CI status for commit: $HEAD_SHA"
-          FRONTEND_STATUS=$(gh run list --workflow="Frontend CI" --commit="$HEAD_SHA" --json conclusion -q '.[0].conclusion')
-          BACKEND_STATUS=$(gh run list --workflow="Backend CI" --commit="$HEAD_SHA" --json conclusion -q '.[0].conclusion')
+          echo "Checking CI status for commit: $HEAD_SHA in repo: $GH_REPO"
+          FRONTEND_STATUS=$(gh run list --repo "$GH_REPO" --workflow="Frontend CI" --commit="$HEAD_SHA" --json conclusion -q '.[0].conclusion')
+          BACKEND_STATUS=$(gh run list --repo "$GH_REPO" --workflow="Backend CI" --commit="$HEAD_SHA" --json conclusion -q '.[0].conclusion')
           
           echo "Frontend CI conclusion: $FRONTEND_STATUS"
           echo "Backend CI conclusion: $BACKEND_STATUS"
@@ -44,6 +48,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
+            set -e
             cd /root/chatbot_AI
             git fetch origin main
             git reset --hard origin/main
