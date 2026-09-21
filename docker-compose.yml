@@ -21,12 +21,26 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     container_name: thinkdocu_qdrant
+    restart: always
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: thinkdocu_minio
     restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
 
   app:
     build:
@@ -39,17 +53,30 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
+      minio:
+        condition: service_started
     environment:
+      # App Core Settings
       API_V1_STR: ${API_V1_STR:-/api/v1}
       PROJECT_NAME: ${PROJECT_NAME:-ThinkDocu}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env before starting Docker Compose}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env before starting Docker Compose}
+      
+      # Database Connection
+      SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://${POSTGRES_USER:-thinkdocu}:${POSTGRES_PASSWORD:-thinkdocu_password}@db:5432/${POSTGRES_DB:-thinkdocu_db}
+      
+      # Qdrant Vector DB Settings
       QDRANT_URL: ${QDRANT_URL:?Set QDRANT_URL in .env before starting Docker Compose}
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
-      SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://${POSTGRES_USER:-thinkdocu}:${POSTGRES_PASSWORD:-thinkdocu_password}@db:5432/${POSTGRES_DB:-thinkdocu_db}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+      
+      # MinIO Storage Settings
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-chatbot-storage}
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:
@@ -76,3 +103,4 @@ services:
 volumes:
   postgres_data:
   qdrant_storage:
+  minio_data:
