@@ -27,6 +27,12 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5s bash -c '</dev/tcp/localhost/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   minio:
     image: quay.io/minio/minio:latest
@@ -41,6 +47,12 @@ services:
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   app:
     build:
@@ -52,9 +64,9 @@ services:
       db:
         condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
       minio:
-        condition: service_started
+        condition: service_healthy
     environment:
       # App Core Settings
       API_V1_STR: ${API_V1_STR:-/api/v1}
@@ -62,16 +74,16 @@ services:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env before starting Docker Compose}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env before starting Docker Compose}
-      
+
       # Database Connection
       SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://${POSTGRES_USER:-thinkdocu}:${POSTGRES_PASSWORD:-thinkdocu_password}@db:5432/${POSTGRES_DB:-thinkdocu_db}
-      
+
       # Qdrant Vector DB Settings
       QDRANT_URL: ${QDRANT_URL:?Set QDRANT_URL in .env before starting Docker Compose}
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
-      
+
       # MinIO Storage Settings
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
