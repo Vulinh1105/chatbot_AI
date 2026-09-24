@@ -6,6 +6,17 @@ import * as api from "../services/chatService";
 export const LOCAL_CONVERSATION_ID = "local-conversation";
 type Pending = { id: string; conversationId: string; messageId: string };
 
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 interface ChatState {
   pendingRequest: Pending | null;
   conversations: Omit<Conversation, "messages">[];
@@ -347,7 +358,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const message = messages?.at(-1);
     const user = messages?.at(-2);
     if (!message || message.id !== messageId || message.role !== "assistant" || message.status !== "error" || user?.role !== "user") return false;
-    const request = { id: crypto.randomUUID(), conversationId, messageId };
+    const request = { id: generateUUID(), conversationId, messageId };
     set({ pendingRequest: request, messagesByConversation: {
       ...state.messagesByConversation,
       [conversationId]: messages.map((item) => item.id === messageId ? { ...item, content: "", status: "waiting", error: undefined } : item),
@@ -361,7 +372,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return get().startNewConversation();
   },
   startNewConversation: () => {
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     const now = new Date().toISOString();
     set((state) => ({
       activeConversationId: id,
@@ -468,14 +479,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const messages: Message[] = [
       {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         role: "user",
         content: trimmed,
         created_at: now,
         status: "done",
       },
       {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         role: "assistant",
         content: "",
         created_at: now,
@@ -484,7 +495,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     ];
 
     const request = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       conversationId: id,
       messageId: messages[1].id,
     };

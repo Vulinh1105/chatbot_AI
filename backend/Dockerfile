@@ -10,7 +10,14 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-RUN addgroup --system app && adduser --system --ingroup app app
+RUN addgroup --system app && adduser --system --ingroup app --home /home/app app
+
+ENV HOME=/home/app \
+    HF_HOME=/home/app/.cache/huggingface \
+    TORCH_HOME=/home/app/.cache/torch
+
+RUN mkdir -p /home/app/.cache /app/backend/documents /app/backend/app/doc_processing/doc \
+    && chown -R app:app /home/app /app
 
 COPY --chown=app:app backend ./backend
 COPY --chown=app:app alembic.ini ./alembic.ini
