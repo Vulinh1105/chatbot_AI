@@ -11,7 +11,7 @@ function DocumentManagementPage() {
   };
 
   return (
-    <div>
+    <div style={{ paddingBottom: "32px" }}>
       <div className="page-header">
         <div>
           <h2>Quản lý tài liệu</h2>

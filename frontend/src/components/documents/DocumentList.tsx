@@ -318,7 +318,9 @@ function DocumentList({
               style={{
                 margin: 0,
                 fontSize: "20px",
-                color: "#0f172a",
+                color: "#f8fafc",
+                fontWeight: 700,
+                textShadow: "0 2px 10px rgba(0, 0, 0, 0.4)",
               }}
             >
               Tài liệu của bạn
@@ -327,7 +329,7 @@ function DocumentList({
             <p
               style={{
                 margin: "5px 0 0",
-                color: "#64748b",
+                color: "#94a3b8",
                 fontSize: "14px",
               }}
             >
@@ -342,13 +344,16 @@ function DocumentList({
             }
             disabled={isLoading}
             style={{
-              border: "1px solid #e2e8f0",
-              background: "#fff",
-              borderRadius: "9px",
-              padding: "8px 12px",
-              color: "#475569",
+              border: "1px solid rgba(117, 181, 255, 0.25)",
+              background: "rgba(15, 28, 64, 0.65)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              borderRadius: "10px",
+              padding: "8px 14px",
+              color: "#93c5fd",
               cursor: "pointer",
-              fontWeight: 500,
+              fontWeight: 600,
+              boxShadow: "0 4px 15px rgba(0, 0, 0, 0.2)",
             }}
           >
             ↻ Làm mới
@@ -360,8 +365,11 @@ function DocumentList({
             style={{
               padding: "36px",
               textAlign: "center",
-              color: "#64748b",
-              background: "#f8fafc",
+              color: "#94a3b8",
+              background: "rgba(10, 20, 50, 0.6)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: "1px solid rgba(117, 181, 255, 0.15)",
               borderRadius: "14px",
             }}
           >
@@ -374,9 +382,9 @@ function DocumentList({
             style={{
               padding: "16px",
               borderRadius: "12px",
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              color: "#dc2626",
+              background: "rgba(239, 68, 68, 0.15)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              color: "#fca5a5",
             }}
           >
             <div>{error}</div>
@@ -390,7 +398,7 @@ function DocumentList({
                 marginTop: "10px",
                 border: "none",
                 background: "transparent",
-                color: "#b91c1c",
+                color: "#f87171",
                 fontWeight: 600,
                 cursor: "pointer",
                 padding: 0,
@@ -408,9 +416,11 @@ function DocumentList({
               style={{
                 padding: "42px 20px",
                 textAlign: "center",
-                border: "1px dashed #cbd5e1",
+                border: "1px dashed rgba(117, 181, 255, 0.25)",
                 borderRadius: "14px",
-                background: "#f8fafc",
+                background: "rgba(10, 20, 50, 0.5)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
               }}
             >
               <div
@@ -426,7 +436,7 @@ function DocumentList({
                 style={{
                   margin: "0 0 6px",
                   fontSize: "17px",
-                  color: "#334155",
+                  color: "#f8fafc",
                 }}
               >
                 Chưa có tài liệu
@@ -435,7 +445,7 @@ function DocumentList({
               <p
                 style={{
                   margin: 0,
-                  color: "#64748b",
+                  color: "#94a3b8",
                 }}
               >
                 Hãy tải tài liệu lên để
@@ -462,20 +472,24 @@ function DocumentList({
                       display: "flex",
                       alignItems: "center",
                       gap: "14px",
-                      padding: "15px 16px",
-                      background: "#fff",
+                      padding: "15px 18px",
+                      background: "rgba(11, 25, 60, 0.72)",
+                      backdropFilter: "blur(16px)",
+                      WebkitBackdropFilter: "blur(16px)",
                       border:
-                        "1px solid #e2e8f0",
-                      borderRadius: "12px",
+                        "1px solid rgba(117, 181, 255, 0.18)",
+                      borderRadius: "14px",
+                      boxShadow: "0 6px 20px rgba(0, 0, 0, 0.2)",
                     }}
                   >
                     <div
                       style={{
                         width: "44px",
                         height: "44px",
-                        borderRadius: "10px",
+                        borderRadius: "12px",
                         background:
-                          "#f1f5f9",
+                          "rgba(30, 48, 92, 0.6)",
+                        border: "1px solid rgba(117, 181, 255, 0.2)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -497,7 +511,8 @@ function DocumentList({
                       <div
                         style={{
                           fontWeight: 600,
-                          color: "#1e293b",
+                          color: "#f8fafc",
+                          fontSize: "15px",
                           overflow: "hidden",
                           textOverflow:
                             "ellipsis",
@@ -519,7 +534,7 @@ function DocumentList({
                           flexWrap: "wrap",
                           gap: "8px",
                           marginTop: "5px",
-                          color: "#64748b",
+                          color: "#94a3b8",
                           fontSize: "13px",
                         }}
                       >
@@ -560,11 +575,11 @@ function DocumentList({
                       style={{
                         width: "40px",
                         height: "40px",
-                        border: "none",
-                        borderRadius: "9px",
+                        border: "1px solid rgba(129, 140, 248, 0.3)",
+                        borderRadius: "10px",
                         background:
-                          "#eef2ff",
-                        color: "#4f46e5",
+                          "rgba(99, 102, 241, 0.18)",
+                        color: "#a5b4fc",
                         cursor: "pointer",
                         fontSize: "18px",
                         display: "flex",
@@ -572,6 +587,7 @@ function DocumentList({
                         justifyContent:
                           "center",
                         flexShrink: 0,
+                        transition: "all 0.18s ease",
                       }}
                     >
                       📜
@@ -588,11 +604,11 @@ function DocumentList({
                       style={{
                         width: "40px",
                         height: "40px",
-                        border: "none",
-                        borderRadius: "9px",
+                        border: "1px solid rgba(248, 113, 113, 0.3)",
+                        borderRadius: "10px",
                         background:
-                          "#fef2f2",
-                        color: "#dc2626",
+                          "rgba(239, 68, 68, 0.15)",
+                        color: "#fca5a5",
                         cursor: "pointer",
                         fontSize: "18px",
                         display: "flex",
@@ -600,6 +616,7 @@ function DocumentList({
                         justifyContent:
                           "center",
                         flexShrink: 0,
+                        transition: "all 0.18s ease",
                       }}
                     >
                       🗑️

@@ -1,21 +1,33 @@
-import type { Document } from "../../types/document";
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
 
-interface DeleteDocumentModalProps {
-  document: Document;
+interface DeleteConversationModalProps {
+  conversationTitle: string;
   isDeleting: boolean;
-  error: string;
   onCancel: () => void;
   onConfirm: () => void;
 }
 
-function DeleteDocumentModal({
-  document,
+/**
+ * Modal xác nhận trước khi xóa cuộc trò chuyện, ngăn chặn thao tác nhầm lẫn
+ */
+function DeleteConversationModal({
+  conversationTitle,
   isDeleting,
-  error,
   onCancel,
   onConfirm,
-}: DeleteDocumentModalProps) {
+}: DeleteConversationModalProps) {
+  // Lắng nghe phím Escape để đóng modal an toàn
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isDeleting) {
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isDeleting, onCancel]);
+
   return createPortal(
     <div
       onClick={() => {
@@ -37,13 +49,12 @@ function DeleteDocumentModal({
       }}
     >
       <div
-        onClick={(event) =>
-          event.stopPropagation()
-        }
+        onClick={(event) => event.stopPropagation()}
         style={{
           width: "100%",
           maxWidth: "440px",
-          background: "linear-gradient(145deg, rgba(15, 25, 60, 0.98), rgba(9, 16, 42, 0.98))",
+          background:
+            "linear-gradient(145deg, rgba(15, 25, 60, 0.98), rgba(9, 16, 42, 0.98))",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
           border: "1px solid rgba(117, 181, 255, 0.22)",
@@ -79,7 +90,7 @@ function DeleteDocumentModal({
             fontWeight: 700,
           }}
         >
-          Xóa tài liệu này?
+          Xóa cuộc trò chuyện này?
         </h3>
 
         <p
@@ -90,14 +101,14 @@ function DeleteDocumentModal({
             lineHeight: 1.6,
           }}
         >
-          Bạn có chắc muốn xóa{" "}
+          Bạn có chắc muốn xóa cuộc trò chuyện{" "}
           <strong
             style={{
               color: "#f1f5f9",
               wordBreak: "break-word",
             }}
           >
-            "{document.original_filename}"
+            "{conversationTitle || "Cuộc trò chuyện"}"
           </strong>
           ?
         </p>
@@ -114,27 +125,8 @@ function DeleteDocumentModal({
             lineHeight: 1.5,
           }}
         >
-          ⚠️ Tài liệu sẽ bị xóa khỏi hệ thống và
-          không thể hoàn tác.
+          ⚠️ Toàn bộ tin nhắn trong cuộc trò chuyện sẽ bị xóa vĩnh viễn và không thể hoàn tác.
         </div>
-
-        {error && (
-          <div
-            style={{
-              marginTop: "12px",
-              padding: "12px 14px",
-              borderRadius: "10px",
-              background: "rgba(239, 68, 68, 0.15)",
-              border:
-                "1px solid rgba(239, 68, 68, 0.3)",
-              color: "#fca5a5",
-              fontSize: "13px",
-              lineHeight: 1.5,
-            }}
-          >
-            {error}
-          </div>
-        )}
 
         <div
           style={{
@@ -150,15 +142,12 @@ function DeleteDocumentModal({
             style={{
               flex: 1,
               height: "44px",
-              border:
-                "1px solid rgba(117, 181, 255, 0.2)",
+              border: "1px solid rgba(117, 181, 255, 0.2)",
               borderRadius: "10px",
               background: "rgba(30, 48, 92, 0.4)",
               color: "#cbd5e1",
               fontWeight: 600,
-              cursor: isDeleting
-                ? "not-allowed"
-                : "pointer",
+              cursor: isDeleting ? "not-allowed" : "pointer",
               opacity: isDeleting ? 0.6 : 1,
               transition: "all 0.18s ease",
             }}
@@ -178,23 +167,19 @@ function DeleteDocumentModal({
               background: "linear-gradient(135deg, #ef4444, #dc2626)",
               color: "#fff",
               fontWeight: 600,
-              cursor: isDeleting
-                ? "not-allowed"
-                : "pointer",
+              cursor: isDeleting ? "not-allowed" : "pointer",
               opacity: isDeleting ? 0.7 : 1,
               boxShadow: "0 4px 15px rgba(239, 68, 68, 0.3)",
               transition: "all 0.18s ease",
             }}
           >
-            {isDeleting
-              ? "Đang xóa..."
-              : "Xóa tài liệu"}
+            {isDeleting ? "Đang xóa..." : "Xóa trò chuyện"}
           </button>
         </div>
       </div>
     </div>,
-    window.document.body
+    document.body
   );
 }
 
-export default DeleteDocumentModal;
+export default DeleteConversationModal;
