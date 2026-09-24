@@ -133,12 +133,15 @@ class ChatService:
 
     async def _run_rag(self, question: str) -> dict[str, Any]:
         try:
-            from app.ai_agent.rag_pipeline import run_pipeline
+            import asyncio
+            from app.ai_agent.rag_pipeline import run_rag
 
-            result = run_pipeline(question)
+            result = await asyncio.to_thread(run_rag, question)
             if isinstance(result, dict):
                 return result
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("Lỗi khi chạy RAG pipeline: %s", e)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="RAG service is temporarily unavailable",

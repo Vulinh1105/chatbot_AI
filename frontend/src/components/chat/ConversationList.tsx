@@ -1,9 +1,15 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useChatStore } from "../../stores/chatStore";
+import DeleteConversationModal from "./DeleteConversationModal";
 import "./ConversationList.css";
 
 function ConversationList({ onSelected }: { onSelected?: () => void }) {
   const newButtonRef = useRef<HTMLButtonElement>(null);
+  const [confirmDeleteConv, setConfirmDeleteConv] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+
   const conversations = useChatStore((state) => state.conversations);
   const activeId = useChatStore((state) => state.activeConversationId);
   const select = useChatStore((state) => state.selectConversation);
@@ -14,53 +20,82 @@ function ConversationList({ onSelected }: { onSelected?: () => void }) {
   const reload = useChatStore((state) => state.loadConversations);
   const remove = useChatStore((state) => state.deleteConversation);
 
-  return (
-    <section className="conversation-panel" aria-label="Hội thoại">
-      <button ref={newButtonRef} className="conversation-new" type="button" onClick={() => { create(); onSelected?.(); }}>
-        + Cuộc trò chuyện mới
-      </button>
-      <h2>Hội thoại</h2>
-      {loading && <p role="status">Đang tải hội thoại…</p>}
-      {error && <div role="alert"><p>{error}</p><button type="button" disabled={loading} onClick={() => void reload()}>Tải lại danh sách</button></div>}
-      <ul className="conversation-list">
-        {conversations.map((conversation) => (
-          <li key={conversation.id} className={`conversation-row${activeId === conversation.id ? " active" : ""}`}>
-            <button
-              type="button"
-              className={`conversation-item${activeId === conversation.id ? " active" : ""}`}
-              aria-current={activeId === conversation.id ? "true" : undefined}
-              disabled={deleting[conversation.id]}
-              title={conversation.title}
-              aria-label={`Mở hội thoại: ${conversation.title}`}
-              onClick={() => {
-                select(conversation.id);
-                onSelected?.();
-              }}
-            >
-              <span className="conversation-title">
-                {conversation.title}
-              </span>
+  // Xử lý xác nhận xóa hội thoại an toàn
+  const handleConfirmDelete = async () => {
+    if (!confirmDeleteConv) return;
+    try {
+      await remove(confirmDeleteConv.id);
+    } finally {
+      setConfirmDeleteConv(null);
+      newButtonRef.current?.focus();
+      onSelected?.();
+    }
+  };
 
-              <span className="conversation-mobile-icon" aria-hidden="true">
-                {conversation.title.charAt(0).toUpperCase()}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="conversation-delete"
-              aria-label={`Xóa hội thoại: ${conversation.title}`}
-              title="Xóa hội thoại"
-              disabled={deleting[conversation.id]}
-              onClick={() => { void remove(conversation.id); newButtonRef.current?.focus(); onSelected?.(); }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-                <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
-              </svg>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
+  return (
+    <>
+      <section className="conversation-panel" aria-label="Hội thoại">
+        <button ref={newButtonRef} className="conversation-new" type="button" onClick={() => { create(); onSelected?.(); }}>
+          + Cuộc trò chuyện mới
+        </button>
+        <h2>Hội thoại</h2>
+        {loading && <p role="status">Đang tải hội thoại…</p>}
+        {error && <div role="alert"><p>{error}</p><button type="button" disabled={loading} onClick={() => void reload()}>Tải lại danh sách</button></div>}
+        <ul className="conversation-list">
+          {conversations.map((conversation) => (
+            <li key={conversation.id} className={`conversation-row${activeId === conversation.id ? " active" : ""}`}>
+              <button
+                type="button"
+                className={`conversation-item${activeId === conversation.id ? " active" : ""}`}
+                aria-current={activeId === conversation.id ? "true" : undefined}
+                disabled={deleting[conversation.id]}
+                title={conversation.title}
+                aria-label={`Mở hội thoại: ${conversation.title}`}
+                onClick={() => {
+                  select(conversation.id);
+                  onSelected?.();
+                }}
+              >
+                <span className="conversation-title">
+                  {conversation.title}
+                </span>
+
+                <span className="conversation-mobile-icon" aria-hidden="true">
+                  {conversation.title.charAt(0).toUpperCase()}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="conversation-delete"
+                aria-label={`Xóa hội thoại: ${conversation.title}`}
+                title="Xóa hội thoại"
+                disabled={deleting[conversation.id]}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmDeleteConv({
+                    id: conversation.id,
+                    title: conversation.title,
+                  });
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+                  <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
+                </svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {confirmDeleteConv && (
+        <DeleteConversationModal
+          conversationTitle={confirmDeleteConv.title}
+          isDeleting={Boolean(deleting[confirmDeleteConv.id])}
+          onCancel={() => setConfirmDeleteConv(null)}
+          onConfirm={() => void handleConfirmDelete()}
+        />
+      )}
+    </>
   );
 }
 
