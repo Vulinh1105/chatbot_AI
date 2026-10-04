@@ -1,139 +1,163 @@
-from pathlib import Path
-from typing import Annotated, Sequence
+from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from typing import List, Optional
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import (
-    get_current_user,
-    get_document_service,
-    is_admin_user,
-)
-from app.core.config import settings
-from app.doc_processing import chunking
-from app.doc_processing.pipeline import run_pipeline_background
-from app.model.document import Document
+from app.api.deps import get_current_user, get_db
 from app.model.user import User
-from app.schemas.document import DocumentResponse
+from app.repository.document_repository import DocumentRepository
+from app.schemas.document import (
+    CompleteUploadRequest,
+    CompleteUploadResponse,
+    DocumentDetailResponse,
+    DocumentResponse,
+    DocumentVersionResponse,
+    InitUploadRequest,
+    InitUploadResponse,
+    UploadPartResponse,
+    UploadSessionStatusResponse,
+)
 from app.services.document_service import DocumentService
+from app.services.storage_service import storage_service
 
 router = APIRouter()
-ALLOWED_FILE_EXTENSIONS = frozenset({".docx", ".pdf", ".csv", ".txt"})
 
 
-def _safe_filename(filename: str | None) -> str:
-    name = Path(filename or "unnamed").name.strip()
-    if not name or name in {".", ".."}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid filename")
-    if Path(name).suffix.lower() not in ALLOWED_FILE_EXTENSIONS:
-        allowed_extensions = ", ".join(sorted(ALLOWED_FILE_EXTENSIONS))
+# --- Multipart Upload Endpoints ---
+@router.post("/upload/init", response_model=InitUploadResponse)
+async def init_multipart_upload(
+    req: InitUploadRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = DocumentService(db)
+    return await service.init_upload(user_id=current_user.id, req=req)
+
+
+@router.post("/upload/{session_id}/part", response_model=UploadPartResponse)
+async def upload_document_part(
+    session_id: str,
+    part_number: int = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = DocumentService(db)
+    data = await file.read()
+    return await service.upload_part(
+        session_id=session_id,
+        part_number=part_number,
+        data=data,
+        user_id=current_user.id,
+    )
+
+
+@router.post("/upload/{session_id}/complete", response_model=CompleteUploadResponse)
+async def complete_multipart_upload(
+    session_id: str,
+    req: Optional[CompleteUploadRequest] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = DocumentService(db)
+    return await service.complete_upload(session_id=session_id, user_id=current_user.id)
+
+
+@router.get("/upload/{session_id}/status", response_model=UploadSessionStatusResponse)
+async def get_upload_status(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    repo = DocumentRepository(db)
+    session = await repo.get_upload_session(session_id)
+    if not session or session.owner_id != current_user.id:
         raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Unsupported file type. Allowed extensions: {allowed_extensions}",
-        )
-    return name[:255]
-
-
-async def _read_upload_with_size_limit(file: UploadFile, max_size_bytes: int) -> bytes:
-    if file.size is not None and file.size > max_size_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"File exceeds the maximum upload size of {max_size_bytes} bytes",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Phiên tải lên không tồn tại hoặc bạn không có quyền truy cập."
         )
 
-    content = await file.read(max_size_bytes + 1)
-    if len(content) > max_size_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"File exceeds the maximum upload size of {max_size_bytes} bytes",
-        )
-    return content
+    uploaded_parts = [p.part_number for p in session.parts]
+    return UploadSessionStatusResponse(
+        session_id=session.id,
+        status=session.status,
+        total_parts=session.total_parts,
+        uploaded_parts=uploaded_parts,
+        expires_at=session.expires_at,
+    )
 
 
-@router.get("/", response_model=list[DocumentResponse], summary="List accessible documents")
+# --- Document Management Endpoints ---
+@router.get("", response_model=List[DocumentResponse])
 async def list_documents(
-    current_user: Annotated[User, Depends(get_current_user)],
-    document_service: Annotated[DocumentService, Depends(get_document_service)],
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 100,
-) -> Sequence[Document]:
-    owner_id = None if is_admin_user(current_user) else current_user.id
-    return await document_service.list_documents(owner_id=owner_id, skip=skip, limit=limit)
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    repo = DocumentRepository(db)
+    return await repo.list_documents(owner_id=current_user.id, skip=skip, limit=limit)
 
 
-@router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
-async def upload_document(
-    file: Annotated[UploadFile, File(...)],
-    current_user: Annotated[User, Depends(get_current_user)],
-    document_service: Annotated[DocumentService, Depends(get_document_service)],
-    background_tasks: BackgroundTasks,
-    owner_id: Annotated[int | None, Form()] = None,
-) -> Document:
-    if owner_id is not None and not is_admin_user(current_user):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can choose the document owner")
-    content = await _read_upload_with_size_limit(file, settings.max_upload_size_bytes)
-    document = await document_service.create_document(
-        owner_id=owner_id or current_user.id,
-        original_filename=_safe_filename(file.filename),
-        content_type=file.content_type,
-        content=content,
-    )
-    background_tasks.add_task(run_pipeline_background, document.id)
-    return document
-
-
-@router.get("/{document_id}", response_model=DocumentResponse)
-async def get_document(
+@router.get("/{document_id}", response_model=DocumentDetailResponse)
+async def get_document_detail(
     document_id: int,
-    current_user: Annotated[User, Depends(get_current_user)],
-    document_service: Annotated[DocumentService, Depends(get_document_service)],
-) -> Document:
-    return await document_service.get_document(document_id, current_user.id, is_admin_user(current_user))
-
-
-@router.put("/{document_id}", response_model=DocumentResponse)
-async def replace_document(
-    document_id: int,
-    file: Annotated[UploadFile, File(...)],
-    current_user: Annotated[User, Depends(get_current_user)],
-    document_service: Annotated[DocumentService, Depends(get_document_service)],
-    background_tasks: BackgroundTasks,
-) -> Document:
-    document = await document_service.get_document(document_id, current_user.id, is_admin_user(current_user))
-    content = await _read_upload_with_size_limit(file, settings.max_upload_size_bytes)
-    document = await document_service.replace_document(
-        document,
-        original_filename=_safe_filename(file.filename),
-        content_type=file.content_type,
-        content=content,
-    )
-    background_tasks.add_task(run_pipeline_background, document.id)
-    return document
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    repo = DocumentRepository(db)
+    doc = await repo.get_document_by_id(document_id=document_id, owner_id=current_user.id)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy tài liệu."
+        )
+    return doc
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     document_id: int,
-    current_user: Annotated[User, Depends(get_current_user)],
-    document_service: Annotated[DocumentService, Depends(get_document_service)],
-) -> None:
-    document = await document_service.get_document(document_id, current_user.id, is_admin_user(current_user))
-    await document_service.delete_document(document)
-    chunking.delete_chunks_by_document(document_id)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    repo = DocumentRepository(db)
+    success = await repo.soft_delete_document(document_id=document_id, owner_id=current_user.id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy tài liệu để xóa."
+        )
+    return None
 
 
-@router.get("/{document_id}/download", response_class=FileResponse)
+@router.get("/{document_id}/download")
 async def download_document(
     document_id: int,
-    current_user: Annotated[User, Depends(get_current_user)],
-    document_service: Annotated[DocumentService, Depends(get_document_service)],
-) -> FileResponse:
-    document = await document_service.get_document(document_id, current_user.id, is_admin_user(current_user))
-    file_path = Path(document.file_path)
-    if not file_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document file not found")
-    return FileResponse(
-        file_path,
-        media_type=document.content_type or "application/octet-stream",
-        filename=document.original_filename,
+    version: Optional[int] = Query(None, description="Version number cần tải; bỏ trống để tải bản mới nhất"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    repo = DocumentRepository(db)
+    doc = await repo.get_document_by_id(document_id=document_id, owner_id=current_user.id)
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tài liệu.")
+
+    target_version: Optional[DocumentVersionResponse] = None
+    if version is not None:
+        target_version = await repo.get_version_by_number(document_id=doc.id, version_number=version)
+    else:
+        target_version = doc.current_version
+
+    if not target_version:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Phiên bản tài liệu không tồn tại.")
+
+    # Sinh link presigned URL từ MinIO tải trực tiếp
+    download_url = storage_service.generate_presigned_download_url(
+        object_name=target_version.object_key,
+        original_filename=target_version.original_filename,
+        expires_seconds=3600,
     )
+    return RedirectResponse(url=download_url)

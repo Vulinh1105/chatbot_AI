@@ -35,24 +35,18 @@ services:
       start_period: 10s
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: ghcr.io/coollabsio/minio:latest
     container_name: thinkdocu_minio
-    restart: always
+    restart: unless-stopped
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web Console UI
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadminpassword}
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
 
   app:
     build:
@@ -64,9 +58,9 @@ services:
       db:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
       minio:
-        condition: service_healthy
+        condition: service_started
     environment:
       # App Core Settings
       API_V1_STR: ${API_V1_STR:-/api/v1}
@@ -84,11 +78,17 @@ services:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
 
-      # MinIO Storage Settings
+      # S3 / MinIO Storage Settings
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadminpassword}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-documents}
+      S3_REGION_NAME: ${S3_REGION_NAME:-us-east-1}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
-      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-chatbot-storage}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadminpassword}
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-documents}
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:
