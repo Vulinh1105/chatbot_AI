@@ -1,14 +1,24 @@
 import { useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
-import api from "../../services/api";
+import {
+  uploadDocument,
+} from "../../services/documentService";
 
-type UploadStatus = "pending" | "processing" | "success" | "error";
+type UploadStatus =
+  | "pending"
+  | "processing"
+  | "success"
+  | "error";
 
 interface UploadItem {
   id: string;
   file: File;
   status: UploadStatus;
   error?: string;
+}
+
+interface DocumentUploadProps {
+  onUploadSuccess?: () => void;
 }
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
@@ -32,12 +42,10 @@ const getErrorMessage = (error: unknown): string => {
 
   const detail = axiosError?.response?.data?.detail;
 
-  // Backend trả lỗi dạng chuỗi
   if (typeof detail === "string") {
     return detail;
   }
 
-  // FastAPI validation error thường trả về mảng object
   if (Array.isArray(detail)) {
     return detail
       .map((item) => {
@@ -47,7 +55,8 @@ const getErrorMessage = (error: unknown): string => {
           "msg" in item
         ) {
           return String(
-            (item as { msg?: unknown }).msg ?? "Dữ liệu không hợp lệ"
+            (item as { msg?: unknown }).msg ??
+              "Dữ liệu không hợp lệ"
           );
         }
 
@@ -87,16 +96,25 @@ const getFileIcon = (file: File): string => {
     return "📘";
   }
 
+  if (file.type === "text/csv") {
+    return "📊";
+  }
+
   return "📄";
 };
 
-function DocumentUpload() {
+function DocumentUpload({
+  onUploadSuccess,
+}: DocumentUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [items, setItems] = useState<UploadItem[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
+  const [isDragging, setIsDragging] =
+    useState(false);
 
-  const validateFile = (file: File): string | null => {
+  const validateFile = (
+    file: File
+  ): string | null => {
     if (!ALLOWED_TYPES.includes(file.type)) {
       return "Chỉ hỗ trợ file PDF, DOCX, TXT hoặc CSV";
     }
@@ -108,7 +126,9 @@ function DocumentUpload() {
     return null;
   };
 
-  const uploadFile = async (item: UploadItem) => {
+  const uploadFile = async (
+    item: UploadItem
+  ) => {
     setItems((prev) =>
       prev.map((current) =>
         current.id === item.id
@@ -122,10 +142,7 @@ function DocumentUpload() {
     );
 
     try {
-      const formData = new FormData();
-      formData.append("file", item.file);
-
-      await api.post("/api/v1/documents/", formData);
+      await uploadDocument(item.file);
 
       setItems((prev) =>
         prev.map((current) =>
@@ -138,16 +155,16 @@ function DocumentUpload() {
             : current
         )
       );
-    } catch (error) {
-      const message = getErrorMessage(error);
 
+      onUploadSuccess?.();
+    } catch (error) {
       setItems((prev) =>
         prev.map((current) =>
           current.id === item.id
             ? {
                 ...current,
                 status: "error",
-                error: message,
+                error: getErrorMessage(error),
               }
             : current
         )
@@ -159,75 +176,104 @@ function DocumentUpload() {
     const newItems: UploadItem[] = [];
 
     files.forEach((file) => {
-      const validationError = validateFile(file);
+      const validationError =
+        validateFile(file);
 
-      const item: UploadItem = {
+      newItems.push({
         id: `${file.name}-${file.lastModified}-${Math.random()}`,
         file,
-        status: validationError ? "error" : "pending",
-        error: validationError ?? undefined,
-      };
-
-      newItems.push(item);
+        status: validationError
+          ? "error"
+          : "pending",
+        error:
+          validationError ?? undefined,
+      });
     });
 
-    setItems((prev) => [...prev, ...newItems]);
+    setItems((prev) => [
+      ...prev,
+      ...newItems,
+    ]);
 
-    // Chỉ upload những file hợp lệ
     newItems
-      .filter((item) => item.status === "pending")
+      .filter(
+        (item) => item.status === "pending"
+      )
       .forEach((item) => {
         void uploadFile(item);
       });
   };
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
+  const handleFileChange = (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    const files = Array.from(
+      event.target.files ?? []
+    );
 
     if (files.length > 0) {
       addFiles(files);
     }
 
-    // Cho phép chọn lại cùng một file
     event.target.value = "";
   };
 
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+  const handleDrop = (
+    event: DragEvent<HTMLDivElement>
+  ) => {
     event.preventDefault();
     setIsDragging(false);
 
-    const files = Array.from(event.dataTransfer.files);
+    const files = Array.from(
+      event.dataTransfer.files
+    );
 
     if (files.length > 0) {
       addFiles(files);
     }
   };
 
-  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (
+    event: DragEvent<HTMLDivElement>
+  ) => {
     event.preventDefault();
     setIsDragging(true);
   };
 
-  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = (
+    event: DragEvent<HTMLDivElement>
+  ) => {
     event.preventDefault();
     setIsDragging(false);
   };
 
-  const handleRetry = (item: UploadItem) => {
+  const handleRetry = (
+    item: UploadItem
+  ) => {
     void uploadFile(item);
   };
 
-  const handleRemove = (id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+  const handleRemove = (
+    id: string
+  ) => {
+    setItems((prev) =>
+      prev.filter(
+        (item) => item.id !== id
+      )
+    );
   };
 
   return (
     <div className="document-upload">
       <div
         className={`document-upload-zone ${
-          isDragging ? "document-upload-zone-dragging" : ""
+          isDragging
+            ? "document-upload-zone-dragging"
+            : ""
         }`}
-        onClick={() => inputRef.current?.click()}
+        onClick={() =>
+          inputRef.current?.click()
+        }
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -241,76 +287,111 @@ function DocumentUpload() {
           onChange={handleFileChange}
         />
 
-        <div className="document-upload-icon">↑</div>
+        <div className="document-upload-icon">
+          ↑
+        </div>
 
         <h3>Tải tài liệu lên</h3>
 
         <p>
-          Kéo và thả file vào đây hoặc click để chọn file
+          Kéo và thả file vào đây hoặc click để
+          chọn file
         </p>
 
-        <p>Hỗ trợ PDF, DOCX, TXT, CSV — tối đa 20MB</p>
+        <p>
+          Hỗ trợ PDF, DOCX, TXT, CSV — tối đa 20MB
+        </p>
       </div>
 
       {items.length > 0 && (
         <div className="document-upload-list">
           {items.map((item) => (
-            <div className="document-upload-item" key={item.id}>
+            <div
+              className="document-upload-item"
+              key={item.id}
+            >
               <div className="document-file-info">
                 <div className="document-file-icon">
                   {getFileIcon(item.file)}
                 </div>
 
                 <div>
-                  <strong>{item.file.name}</strong>
+                  <strong>
+                    {item.file.name}
+                  </strong>
 
                   <div>
-                    {formatFileSize(item.file.size)}
+                    {formatFileSize(
+                      item.file.size
+                    )}
                   </div>
                 </div>
               </div>
 
               <div className="document-upload-status">
                 {item.status === "pending" && (
-                  <span>Đang chờ...</span>
+                  <span>
+                    Đang chờ...
+                  </span>
                 )}
 
-                {item.status === "processing" && (
-                  <span className="status-processing">
+                {item.status ===
+                  "processing" && (
+                  <span>
                     Đang tải lên...
                   </span>
                 )}
 
                 {item.status === "success" && (
-                  <span className="status-success">
-                    Tải lên thành công
+                  <span
+                    style={{
+                      color: "#16a34a",
+                      fontWeight: 600,
+                    }}
+                  >
+                    ✓ Thành công
                   </span>
                 )}
 
                 {item.status === "error" && (
-                  <span className="status-error">
-                    {item.error ?? "Tải lên thất bại"}
-                  </span>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: "#dc2626",
+                      }}
+                    >
+                      {item.error}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleRetry(item)
+                      }
+                    >
+                      Thử lại
+                    </button>
+                  </div>
+                )}
+
+                {item.status !==
+                  "processing" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleRemove(item.id)
+                    }
+                  >
+                    ×
+                  </button>
                 )}
               </div>
-
-              {item.status === "error" && (
-                <button
-                  type="button"
-                  className="document-retry-button"
-                  onClick={() => handleRetry(item)}
-                >
-                  Thử lại
-                </button>
-              )}
-
-              <button
-                type="button"
-                className="document-remove-button"
-                onClick={() => handleRemove(item.id)}
-              >
-                Xóa
-              </button>
             </div>
           ))}
         </div>

@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+import os
 from typing import AsyncGenerator
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +47,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix=f"{settings.api_v1_str}/auth", tags=["Auth"])
 app.include_router(user_router, prefix=f"{settings.api_v1_str}/users", tags=["Users"])
 app.include_router(chat_router, prefix=f"{settings.api_v1_str}/chats", tags=["Chats"])
-app.include_router(document_router, prefix=f"{settings.api_v1_str}/documents", tags=["Documents"])
+app.include_router(document_router, prefix=f"{settings.api_v1_str}/documents", tags=["Documents"],)
 
 
 @app.get("/", tags=["General"])
@@ -69,3 +71,29 @@ async def db_check(db: AsyncSession = Depends(get_db)):
             detail=f"Database connection failed: {str(e)}",
         )
 
+@app.get("/health", tags=["Health"])
+async def health_check(db: AsyncSession = Depends(get_db)):
+    health_status = {"status": "ok", "postgres": "ok", "qdrant": "ok"}
+    try:
+        result = await db.execute(text("SELECT 1"))
+        result.fetchone()
+    except Exception:
+        health_status["postgres"] = "unhealthy"
+    try:
+        from qdrant_client import QdrantClient
+        qdrant_url = os.getenv(
+            "QDRANT_URL",
+            f"http://{os.getenv('QDRANT_HOST', 'qdrant')}:{os.getenv('QDRANT_PORT', '6333')}",
+        )
+        qdrant_api_key = os.getenv("QDRANT_API_KEY")
+        if qdrant_api_key in {"", "None", "null"}:
+            qdrant_api_key = None
+        client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, timeout=2.0)
+        client.get_collections()
+    except Exception:
+        health_status["qdrant"] = "unhealthy"
+    is_ready = all(v == "ok" for v in health_status.values())
+    return JSONResponse(
+        content=health_status,
+        status_code=200 if is_ready else 503
+    )

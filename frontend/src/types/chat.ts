@@ -18,6 +18,7 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';            // Nguồn duy nhất xác định người gửi
   content: string;                                  // Nội dung câu trả lời 
+  sources?: { source: string; pages: number[] }[];
   citations?: Citation[];                            // Danh sách nguồn 
   created_at?: string;                              // Thời gian gửi
   status?: 'sending' | 'waiting' | 'streaming' | 'done' | 'error' | 'stopped';

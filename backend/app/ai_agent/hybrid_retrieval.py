@@ -1,128 +1,315 @@
-from pathlib import Path
-from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_community.retrievers import BM25Retriever
+from __future__ import annotations
 
-from dotenv import load_dotenv
+import re
+import unicodedata
+from collections import Counter
+from math import log
+from typing import Iterable
 
+from langchain_core.documents import Document
+from .retrieval import QdrantRetriever, Retriever
 
-load_dotenv()
+# hiện đang tìm chunk theo 2 cách: semantic search và Keyword Search -> trộn 2 danh sách = RRF -> lấy top k
 
+RRF_K = 60
 
-FAISS_PATH = Path(__file__).resolve().parent.parent.parent / 'faiss_index'
-embedder = OpenAIEmbeddings(
-    model='text-embedding-3-large'
-)
-
-# lấy phần embedding ở T12
-db = FAISS.load_local(
-    FAISS_PATH,
-    embedder,
-    allow_dangerous_deserialization=True
-)
-
-# Semantic retriever (giống T13)
-semantic_retriever = db.as_retriever(
-    search_type='similarity_score_threshold',
-    search_kwargs={'k': 3, 'score_threshold': 0.2}
-)
-
-
-def _load_indexed_documents():
-    """
-    Lấy toàn bộ Document đã được embed trong FAISS index (T12) để build
-    keyword index (BM25) trên đúng nội dung đã index - tránh phải đọc lại
-    file chunking JSON riêng, dễ bị lệch nếu FAISS index được cập nhật sau.
-    """
-    return list(db.docstore._dict.values())
-
-
-_indexed_docs = _load_indexed_documents()
-print(f'Đã nạp {len(_indexed_docs)} chunks đã index để build Keyword (BM25) retriever.')
-
-# Keyword retriever (T14 - BM25)
-keyword_retriever = BM25Retriever.from_documents(_indexed_docs)
-keyword_retriever.k = 3
-
-RRF_K = 60  # hằng số Reciprocal Rank Fusion (giá trị phổ biến, giảm ảnh hưởng hạng thấp)
-
-
-def _doc_id(doc) -> str:
-    """
-    ID duy nhất của 1 chunk, dùng để hợp nhất kết quả giữa 2 retriever.
-    Ưu tiên chunk_id có sẵn trong metadata (từ T14 - chunking.py);
-    fallback sang document_id + chunk_index nếu thiếu chunk_id.
-    """
+# xác định id của 1 chunk -> ưu tiên chunk_id
+def _doc_id(doc: Document) -> str:
     meta = doc.metadata
-    if meta.get('chunk_id') is not None:
-        return str(meta['chunk_id'])
-    return f"{meta.get('document_id', '')}_{meta.get('chunk_index', '')}"
+    return str(
+        meta.get("chunk_id")
+        or meta.get("qdrant_point_id")
+        or (
+            f"{meta.get('document_id', '')}_"
+            f"{meta.get('chunk_index', '')}"
+        )
+    )
+
+# tách thành danh sách từ
+def _tokenize(text: str) -> list[str]:
+    normalized = unicodedata.normalize("NFD", text.lower())
+    normalized = "".join(
+        char
+        for char in normalized
+        if not unicodedata.combining(char)
+    )
+    normalized = normalized.replace("đ", "d")
+    return re.findall(r"\w+", normalized, flags=re.UNICODE)
+
+# tạo 1 bộ retriever kết hợp: Semantic Retriever + Keyword Retriever
+class HybridRetriever:
+
+    def __init__(
+        self,
+        semantic_retriever: Retriever,
+        documents: Iterable[Document] | None = None
+    ) -> None:
+        # nhận semantic retrieval có sẵn
+        self.semantic_retriever = semantic_retriever
+
+        if documents is not None:
+            self.documents = list(documents)
 
 
-def retrieve_semantic(query, k=3):
-    """Semantic-only retrieval (T13), dùng để so sánh với Hybrid."""
-    semantic_retriever.search_kwargs['k'] = k
-    return semantic_retriever.invoke(query)
+        # nếu dataset lớn -> chưa tối ưu
+        # (qdrant -> scroll all 99 chunks -> đưa về python trong RAM -> BM25-like)
+        # Qdrant đang lưu dữ liệu, nhưng keyword search chưa phải native sparse/full-text search của Qdrant.
+        elif isinstance(
+            semantic_retriever,
+            QdrantRetriever,
+        ):
+            self.documents = (
+                semantic_retriever.get_all_documents()
+            )
 
+        else:
+            self.documents = []
 
-def retrieve_keyword(query, k=3):
-    """Keyword-only retrieval (BM25), dùng để so sánh với Hybrid."""
-    keyword_retriever.k = k
-    return keyword_retriever.invoke(query)
+        # Chuẩn bị dữ liệu cho BM25-like keyword search
+        self._tokenized_documents = [
+            _tokenize(doc.page_content)
+            for doc in self.documents
+        ]
 
+        self._avg_doc_length = (
+            sum(
+                map(
+                    len,
+                    self._tokenized_documents
+                )
+            )
+            / len(self._tokenized_documents)
+            if self._tokenized_documents
+            else 0
+        )
 
-def retrieve_hybrid(query, k=3):
-    """
-    Hybrid Retrieval (T14): kết hợp Semantic search (T13) và Keyword search
-    (BM25) bằng Reciprocal Rank Fusion (RRF).
+        self._document_frequency = Counter(
+            token
+            for tokens in self._tokenized_documents
+            for token in set(tokens)
+        )
 
-    RRF được chọn vì điểm cosine similarity (semantic) và điểm BM25 (keyword)
-    không cùng thang đo - không thể cộng điểm trực tiếp mà không làm 1 bên
-    lấn át bên kia. RRF chỉ dựa vào *thứ hạng* của mỗi kết quả trong từng
-    danh sách nên không cần chuẩn hóa điểm số giữa 2 phương pháp:
+    # 1. Vector search
+    # gọi semantic retrieval: retrieval.py -> qdrant
+    def retrieve_semantic(
+        self,
+        query: str,
+        k: int = 8
+    ) -> list[Document]:
+        return self.semantic_retriever.retrieve(
+            query,
+            k
+        )
 
-        RRF_score(doc) = sum( 1 / (RRF_K + rank_i) ) trên mỗi danh sách mà doc xuất hiện
-    """
-    # Lấy candidate rộng hơn k để RRF có đủ ứng viên tốt trước khi cắt còn k.
-    candidate_k = max(k * 3, 10)
+    # 2. keyword search
+    # BM25-like; tách query thành các từ
+    # tìm chunk dựa trên từ khoá xuất hiện trong text
+    def retrieve_keyword(
+        self,
+        query: str,
+        k: int = 8
+    ) -> list[Document]:
 
-    semantic_retriever.search_kwargs['k'] = candidate_k
-    semantic_results = semantic_retriever.invoke(query)
+        if not self.documents:
+            return []
 
-    keyword_retriever.k = candidate_k
-    keyword_results = keyword_retriever.invoke(query)
+        terms = set(
+            _tokenize(query)
+        )
 
-    rrf_scores = {}
-    doc_by_id = {}
+        if not terms:
+            return []
 
-    for result_list in (semantic_results, keyword_results):
-        for rank, doc in enumerate(result_list):
-            doc_id = _doc_id(doc)
-            rrf_scores[doc_id] = rrf_scores.get(doc_id, 0.0) + 1.0 / (RRF_K + rank + 1)
-            doc_by_id[doc_id] = doc
+        total_documents = len(
+            self.documents
+        )
 
-    ranked_ids = sorted(rrf_scores, key=lambda i: rrf_scores[i], reverse=True)
+        k1 = 1.5
+        b = 0.75
 
-    return [doc_by_id[doc_id] for doc_id in ranked_ids[:k]]
+        scored: list[
+            tuple[float, Document]
+        ] = []
 
+        # duyệt từng chunk
+        for doc, tokens in zip(
+            self.documents,
+            self._tokenized_documents,
+        ):
+            counts = Counter(tokens)
+            length = len(tokens)
 
-if __name__ == '__main__':
-    query = input('Question: ')
+            if length == 0:
+                continue
 
-    print('\n=== SEMANTIC (T13) ===')
-    for i, doc in enumerate(retrieve_semantic(query), start=1):
-        print(f'--- Result {i} ---')
-        print('Content:', doc.page_content)
-        print('Metadata:', doc.metadata)
+            score = 0.0
 
-    print('\n=== KEYWORD (T14 - BM25) ===')
-    for i, doc in enumerate(retrieve_keyword(query), start=1):
-        print(f'--- Result {i} ---')
-        print('Content:', doc.page_content)
-        print('Metadata:', doc.metadata)
+            # tính điểm cho từng query term
+            for term in terms:
+                frequency = counts[term]
 
-    print('\n=== HYBRID (T14 - RRF) ===')
-    for i, doc in enumerate(retrieve_hybrid(query), start=1):
-        print(f'--- Result {i} ---')
-        print('Content:', doc.page_content)
-        print('Metadata:', doc.metadata)
+                if not frequency:
+                    continue
+
+                document_frequency = (
+                    self._document_frequency[term]
+                )
+
+                # IDF: ý tưởng: 1 từ xuất hiện ở ít document -> gtri phân biệt cao hơn
+                idf = log(
+                    1
+                    + (
+                        total_documents
+                        - document_frequency
+                        + 0.5
+                    )
+                    / (
+                        document_frequency
+                        + 0.5
+                    )
+                )
+
+                # BM25 score: idea: score càng cao -> keyword match càng tốt
+                score += (
+                    idf
+                    * frequency
+                    * (k1 + 1)
+                    / (
+                        frequency
+                        + k1
+                        * (
+                            1
+                            - b
+                            + b
+                            * length
+                            / self._avg_doc_length
+                        )
+                    )
+                )
+
+            if score > 0:
+                metadata = dict(
+                    doc.metadata
+                )
+
+                metadata["keyword_score"] = (
+                    float(score)
+                )
+
+                scored.append(
+                    (
+                        float(score),
+                        Document(
+                            page_content=doc.page_content,
+                            metadata=metadata,
+                        ),
+                    )
+                )
+
+        scored.sort(
+            key=lambda item: item[0],
+            reverse=True,
+        )
+
+        return [
+            doc
+            for _, doc in scored[:k]
+        ]
+
+    # Hybrid search
+    # ham tổng
+    def retrieve(
+        self,
+        query: str,
+        k: int = 8,
+    ) -> list[Document]:
+
+        candidate_k = max(
+            k * 3,
+            10,
+        )
+
+        semantic_results = (
+            self.retrieve_semantic(
+                query,
+                candidate_k,
+            )
+        )
+
+        keyword_results = (
+            self.retrieve_keyword(
+                query,
+                candidate_k,
+            )
+        )
+
+        scores: dict[str, float] = {}
+        docs: dict[str, Document] = {}
+
+        # RRF
+        for result_set in (
+            semantic_results,
+            keyword_results,
+        ):
+            for rank, document in enumerate(
+                result_set,
+                start=1,
+            ):
+                key = _doc_id(
+                    document
+                )
+
+                scores[key] = (
+                    scores.get(key, 0.0)
+                    + 1
+                    / (
+                        RRF_K
+                        + rank
+                    )
+                )
+
+                docs[key] = document
+
+        # Sort theo RRF score
+        ranked_keys = sorted(
+            scores,
+            key=scores.get,
+            reverse=True,
+        )[:k]
+
+        output: list[Document] = []
+
+        for rank, key in enumerate(
+            ranked_keys,
+            start=1,
+        ):
+            doc = docs[key]
+
+            metadata = dict(
+                doc.metadata
+            )
+
+            metadata.update(
+                {
+                    "rrf_score": scores[key],
+                    "retrieval_rank": rank,
+                }
+            )
+
+            output.append(
+                Document(
+                    page_content=doc.page_content,
+                    metadata=metadata,
+                )
+            )
+
+        return output
+
+'''
+TODO/Future:
+Keyword Search hiện tại chạy BM25-like trên toàn bộ chunks
+load từ Qdrant bằng get_all_documents().
+Phù hợp với prototype/dataset nhỏ.
+Khi dataset lớn cần chuyển sang native Qdrant
+Sparse/Keyword Search để tránh load toàn bộ chunks mỗi query.
+'''

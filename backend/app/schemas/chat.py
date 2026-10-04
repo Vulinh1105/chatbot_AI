@@ -13,6 +13,10 @@ class ChatUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
 
 
+class ChatAskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=5000)
+
+
 class ChatResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -40,7 +44,16 @@ class ChatMessageResponse(BaseModel):
     sources: list[ChatMessageSource] = Field(default_factory=list)
     status: ChatMessageStatus
     created_at: datetime
+
+
 class ChatListResponse(BaseModel):
     items: list[ChatResponse]
+    next_cursor: int | None = None
+    has_more: bool
+
+
+class ChatHistoryResponse(BaseModel):
+    chat: ChatResponse
+    messages: list[ChatMessageResponse]
     next_cursor: int | None = None
     has_more: bool

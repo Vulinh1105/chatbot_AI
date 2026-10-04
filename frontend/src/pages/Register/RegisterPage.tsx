@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { register } from "../../services/authService";
 import axios from "axios";
+import "../Auth/Auth.css";
 
 function RegisterPage() {
   const navigate = useNavigate();
@@ -16,7 +17,9 @@ function RegisterPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
     event.preventDefault();
 
     setError("");
@@ -33,12 +36,16 @@ function RegisterPage() {
     }
 
     if (password.length < 8) {
-      setError("Mật khẩu phải có ít nhất 8 ký tự.");
+      setError(
+        "Mật khẩu phải có ít nhất 8 ký tự."
+      );
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Mật khẩu xác nhận không khớp.");
+      setError(
+        "Mật khẩu xác nhận không khớp."
+      );
       return;
     }
 
@@ -65,108 +72,147 @@ function RegisterPage() {
         : "Đăng ký thất bại. Vui lòng thử lại.";
 
       setError(message);
-    }
-     finally {
+    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <div className="login-header">
-          <div className="login-logo">DocBot</div>
+    <main className="auth-page">
+      <section className="auth-card">
+        <header className="auth-header">
+          <div className="auth-logo" aria-hidden="true">
+            D
+          </div>
 
           <h1>Đăng ký</h1>
 
-          <p>Tạo tài khoản Document Chatbot</p>
-        </div>
+          <p>
+            Tạo tài khoản Document Chatbot
+          </p>
+        </header>
 
-        <form onSubmit={handleSubmit} className="login-form">
-          <div className="form-group">
-            <label htmlFor="username">Tên đăng nhập</label>
+        <form
+          onSubmit={handleSubmit}
+          className="auth-form"
+        >
+          <div className="auth-form-group">
+            <label htmlFor="username">
+              Tên đăng nhập
+            </label>
 
             <input
               id="username"
+              name="username"
               type="text"
               placeholder="Nhập tên đăng nhập"
               value={username}
-              onChange={(event) => setUsername(event.target.value)}
+              onChange={(event) =>
+                setUsername(event.target.value)
+              }
+              autoComplete="username"
               disabled={loading}
+              required
             />
-
           </div>
 
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
+          <div className="auth-form-group">
+            <label htmlFor="email">
+              Email
+            </label>
 
             <input
               id="email"
+              name="email"
               type="email"
               placeholder="Nhập email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) =>
+                setEmail(event.target.value)
+              }
+              autoComplete="email"
               disabled={loading}
+              required
             />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="password">Mật khẩu</label>
+          <div className="auth-form-group">
+            <label htmlFor="password">
+              Mật khẩu
+            </label>
 
             <input
               id="password"
+              name="password"
               type="password"
               placeholder="Nhập mật khẩu"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) =>
+                setPassword(event.target.value)
+              }
+              autoComplete="new-password"
               disabled={loading}
+              required
             />
           </div>
 
-          <div className="form-group">
+          <div className="auth-form-group">
             <label htmlFor="confirmPassword">
               Xác nhận mật khẩu
             </label>
 
             <input
               id="confirmPassword"
+              name="confirmPassword"
               type="password"
               placeholder="Nhập lại mật khẩu"
               value={confirmPassword}
               onChange={(event) =>
                 setConfirmPassword(event.target.value)
               }
+              autoComplete="new-password"
               disabled={loading}
+              required
             />
           </div>
 
           {error && (
-            <div className="login-error">
+            <div
+              className="auth-error"
+              role="alert"
+            >
               {error}
             </div>
           )}
 
           {success && (
-            <div className="register-success">
+            <div
+              className="auth-success"
+              role="status"
+            >
               {success}
             </div>
           )}
 
           <button
             type="submit"
-            className="login-button"
+            className="auth-button"
             disabled={loading}
           >
-            {loading ? "Đang đăng ký..." : "Đăng ký"}
+            {loading
+              ? "Đang đăng ký..."
+              : "Đăng ký"}
           </button>
         </form>
 
-        <div className="register-login-link">
+        <div className="auth-footer">
           Đã có tài khoản?{" "}
-          <Link to="/login">Đăng nhập</Link>
+          <Link to="/login">
+            Đăng nhập
+          </Link>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
 

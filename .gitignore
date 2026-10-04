@@ -9,6 +9,9 @@ venv/
 
 # Environment files
 .env
+.env.*
+*.env
+**/.env
 
 # Backend local database
 *.db
@@ -16,9 +19,11 @@ venv/
 # Frontend
 node_modules/
 dist/
+pnpm-lock.yaml
 
-# Generated data
+# Generated data & testing artifacts
 backend/faiss_index/
+.playwright-mcp/
 
 # IDE
 .idea/

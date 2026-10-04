@@ -21,12 +21,18 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     container_name: thinkdocu_qdrant
+    restart: always
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
-    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5s bash -c '</dev/tcp/localhost/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   minio:
     image: ghcr.io/coollabsio/minio:latest
@@ -41,6 +47,7 @@ services:
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
+
   app:
     build:
       context: .
@@ -55,23 +62,38 @@ services:
       minio:
         condition: service_started
     environment:
+      # App Core Settings
       API_V1_STR: ${API_V1_STR:-/api/v1}
       PROJECT_NAME: ${PROJECT_NAME:-ThinkDocu}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env before starting Docker Compose}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env before starting Docker Compose}
+
+      # Database Connection
       SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://${POSTGRES_USER:-thinkdocu}:${POSTGRES_PASSWORD:-thinkdocu_password}@db:5432/${POSTGRES_DB:-thinkdocu_db}
+
+      # Qdrant Vector DB Settings
+      QDRANT_URL: ${QDRANT_URL:?Set QDRANT_URL in .env before starting Docker Compose}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+
+      # S3 / MinIO Storage Settings
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
       S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadminpassword}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-documents}
       S3_REGION_NAME: ${S3_REGION_NAME:-us-east-1}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadminpassword}
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-documents}
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:
       - ./backend/documents:/app/backend/documents
+      - ./backend/app/doc_processing/doc:/app/backend/app/doc_processing/doc
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8000/db-check').read()"]
       interval: 10s

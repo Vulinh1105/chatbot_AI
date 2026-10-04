@@ -5,7 +5,7 @@
 1. Đặt file `.pdf`, `.docx` hoặc `.txt` vào:
 
    ```
-   backend/documents/test/
+   backend/documents/test_documents/
    ```
 
 2. Khởi động Docker:
@@ -14,13 +14,17 @@
    docker compose up --build
    ```
 
-   Nếu vừa sửa code, dùng docker compose up --build.
-
 3. Chạy test ingestion:
 
    ```
    docker compose exec app python "/app/backend/app/doc_processing/test code/test_ingestion.py" --owner-id (replace with number)
    E.g: docker compose exec app python "/app/backend/app/doc_processing/test code/test_ingestion.py" --owner-id 3
+   ```
+
+   Mặc định test dùng `fixed_overlap`, không cần OpenAI. Có thể chọn chiến lược khác:
+
+   ```
+   docker compose exec app python "/app/backend/app/doc_processing/test code/test_ingestion.py" --owner-id 3 --strategy recursive_paragraph
    ```
 
 4. Kiểm tra kết quả trong:
@@ -36,8 +40,8 @@
 
 Đọc file và tạo parsed blocks, không cần DB và không ghi `chunks.json`:
 
-```powershell
-docker compose exec app python -c "from app.doc_processing.parsing import parse_document; blocks=parse_document('/app/backend/documents/test/example.docx', 'example.docx', 999); print('blocks=', len(blocks)); print(blocks[0] if blocks else 'EMPTY')"
+```
+docker compose exec app python -c "from app.doc_processing.parsing import parse_document; blocks=parse_document('/app/backend/documents/test_documents/example.docx', 'example.docx', 999); print('blocks=', len(blocks)); print(blocks[0] if blocks else 'EMPTY')"
 ```
 
 Kết quả cần có `blocks > 0`, mỗi block gồm `document_id`, `page`, `text`.
@@ -46,13 +50,13 @@ Kết quả cần có `blocks > 0`, mỗi block gồm `document_id`, `page`, `te
 
 Chunk parsed blocks trong bộ nhớ, không cần DB và không ghi file:
 
-```powershell
-docker compose exec app python -c "from app.doc_processing.parsing import parse_document; from app.doc_processing.chunking import chunk_blocks; blocks=parse_document('/app/backend/documents/test/example.docx', 'example.docx', 999); chunks=chunk_blocks(blocks); print('blocks=', len(blocks), 'chunks=', len(chunks)); print(chunks[0] if chunks else 'EMPTY')"
+```
+docker compose exec app python -c "from app.doc_processing.parsing import parse_document; from app.doc_processing.chunking import chunk_blocks; blocks=parse_document('/app/backend/documents/test_documents/example.docx', 'example.docx', 999); chunks=chunk_blocks(blocks); print('blocks=', len(blocks), 'chunks=', len(chunks)); print(chunks[0] if chunks else 'EMPTY')"
 ```
 
 Chạy riêng module chỉ kiểm tra entrypoint:
 
-```powershell
+```
 docker compose exec app python -m app.doc_processing.chunking
 ```
 
@@ -62,7 +66,7 @@ Kết quả gồm số chunk demo trong bộ nhớ và `total_chunks_in_store`, 
 
 `ingestion.py` cần record tài liệu trong PostgreSQL, nên không test bằng cách chạy file trực tiếp. Chạy file trực tiếp chỉ in hướng dẫn:
 
-```powershell
+```
 docker compose exec app python -m app.doc_processing.ingestion
 ```
 
@@ -72,7 +76,7 @@ docker compose exec app python -m app.doc_processing.ingestion
 
 `pipeline.py` cũng cần `document_id` có trong PostgreSQL. Chạy file trực tiếp không xử lý tài liệu:
 
-```powershell
+```
 docker compose exec app python -m app.doc_processing.pipeline
 ```
 
@@ -80,9 +84,9 @@ Pipeline thật được gọi tự động bởi `test_ingestion.py` hoặc API
 
 ### 5. `test_ingestion.py`
 
-Đây là lệnh test đầy đủ cho file trong `backend/documents/test`:
+Đây là lệnh test đầy đủ cho file trong `backend/documents/test_documents`:
 
-```powershell
+```
 docker compose exec app python "/app/backend/app/doc_processing/test code/test_ingestion.py" --owner-id (replace with number)
 E.g: docker compose exec app python "/app/backend/app/doc_processing/test code/test_ingestion.py" --owner-id 3
 ```
@@ -118,3 +122,12 @@ backend/app/doc_processing/doc/chunks.json
 
 `status=chunked` nghĩa là pipeline đã parse và chunk thành công. `chunk_count` là số chunk của tài liệu.
 `total_chunks_in_store` là tổng số chunk của tất cả tài liệu hiện có trong `chunks.json`.
+
+## Reset dữ liệu test
+
+Chỉ xóa document có file nằm trong `backend/documents/test_documents`, chunk/status tương ứng
+và file vật lý trong thư mục test. Dữ liệu document và file ngoài thư mục này không bị xóa:
+
+```
+docker compose exec app python "/app/backend/app/doc_processing/test code/reset_records.py" --yes
+```

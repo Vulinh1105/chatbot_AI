@@ -1,18 +1,41 @@
 import { create } from "zustand";
+import axios from "axios";
 import type { Conversation, Message } from "../types/chat";
-import { requestMockReply } from "../services/mockChat";
+import * as api from "../services/chatService";
 
 export const LOCAL_CONVERSATION_ID = "local-conversation";
+type Pending = { id: string; conversationId: string; messageId: string };
+
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 interface ChatState {
-  pendingRequest: { id: string; conversationId: string; messageId: string } | null;
+  pendingRequest: Pending | null;
   conversations: Omit<Conversation, "messages">[];
   activeConversationId: string;
   draftsByConversation: Record<string, string>;
   messagesByConversation: Record<string, Message[]>;
+  serverIds: Record<string, string>;
+  loadingHistory: Record<string, boolean>;
+  loadedHistory: Record<string, boolean>;
+  historyErrors: Record<string, string>;
+  deleting: Record<string, boolean>;
+  loadingConversations: boolean;
+  initialized: boolean;
+  error: string | null;
+  loadConversations: () => Promise<void>;
+  loadHistory: (id: string) => Promise<void>;
   createConversation: () => string;
   startNewConversation: () => string;
-  deleteConversation: (id: string) => void;
+  deleteConversation: (id: string) => Promise<void>;
   selectConversation: (id: string) => void;
   setDraft: (id: string, value: string) => void;
   sendMessage: (content: string) => boolean;
@@ -22,8 +45,10 @@ interface ChatState {
   resetChat: () => void;
 }
 
+let epoch = 0;
+let listGeneration = 0;
 let activeController: AbortController | null = null;
-let flushActive: (() => void) | null = null;
+const creating = new Map<string, Promise<string>>();
 
 const initialData = () => {
   const now = new Date().toISOString();
@@ -33,31 +58,72 @@ const initialData = () => {
     activeConversationId: LOCAL_CONVERSATION_ID,
     draftsByConversation: { [LOCAL_CONVERSATION_ID]: "" },
     messagesByConversation: { [LOCAL_CONVERSATION_ID]: [] as Message[] },
+    serverIds: {} as Record<string, string>,
+    loadingHistory: {} as Record<string, boolean>,
+    loadedHistory: {} as Record<string, boolean>,
+    historyErrors: {} as Record<string, string>,
+    deleting: {} as Record<string, boolean>,
+    loadingConversations: false,
+    initialized: false,
+    error: null,
   };
 };
 
-async function resolveReply(request: NonNullable<ChatState["pendingRequest"]>, content: string, attempt: number) {
+export function toMessage(item: api.ApiMessage): Message {
+  return {
+    id: String(item.id),
+    role:
+      item.role === "assistant"
+        ? "assistant"
+        : item.role === "system"
+          ? "assistant"
+          : "user",
+    content: item.content,
+    created_at: item.created_at,
+    sources: item.sources,
+    status:
+      item.status === "completed"
+        ? "done"
+        : item.status === "pending"
+          ? "waiting"
+          : "error",
+  };
+}
+
+function errorText(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    if (error.response?.status === 401) return "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.";
+    if (error.response?.status === 503) return "Dịch vụ trả lời đang không khả dụng. Vui lòng thử lại sau.";
+    if (error.response?.status === 404) return "Không tìm thấy hội thoại hoặc API chat chưa được triển khai.";
+    if (error.code === "ECONNABORTED") return "Chờ phản hồi quá lâu. Hãy tải lại lịch sử trước khi gửi lại để tránh trùng câu hỏi.";
+  }
+  return "Không thể kết nối hoặc xử lý yêu cầu. Nếu vừa gửi câu hỏi, hãy tải lại lịch sử trước khi thử lại.";
+}
+
+// Keep local UI keys stable while using only backend IDs in HTTP requests.
+async function ensureServerChat(id: string): Promise<string> {
+  const state = useChatStore.getState();
+  if (state.serverIds[id]) return state.serverIds[id];
+  const existing = creating.get(id);
+  if (existing) return existing;
+  const version = epoch;
+  const title = state.conversations.find((chat) => chat.id === id)?.title ?? "Cuộc trò chuyện mới";
+  const operation = api.createChat(title).then((chat) => {
+    if (epoch !== version) throw new Error("Session changed");
+    useChatStore.setState((current) => ({ serverIds: { ...current.serverIds, [id]: String(chat.id) } }));
+    return String(chat.id);
+  });
+  creating.set(id, operation);
+  try { return await operation; }
+  finally { if (creating.get(id) === operation) creating.delete(id); }
+}
+
+async function resolveReply(request: Pending, content: string) {
   const controller = new AbortController();
   activeController = controller;
-  let received = "";
-  let frame: number | null = null;
-  const flush = () => {
-    if (frame !== null) cancelAnimationFrame(frame);
-    frame = null;
-    if (!received || useChatStore.getState().pendingRequest?.id !== request.id) return;
-    useChatStore.setState((state) => ({
-      messagesByConversation: {
-        ...state.messagesByConversation,
-        [request.conversationId]: state.messagesByConversation[request.conversationId].map(
-          (message) => message.id === request.messageId ? { ...message, content: received, status: "streaming" } : message,
-        ),
-      },
-    }));
-  };
-  flushActive = flush;
+  const current = () => useChatStore.getState().pendingRequest?.id === request.id;
   const finish = (patch: Partial<Message>) => {
-    flush();
-    if (useChatStore.getState().pendingRequest?.id !== request.id) return;
+    if (!current()) return;
     useChatStore.setState((state) => ({
       pendingRequest: null,
       messagesByConversation: {
@@ -69,43 +135,210 @@ async function resolveReply(request: NonNullable<ChatState["pendingRequest"]>, c
     }));
   };
   try {
-    const reply = await requestMockReply({ content, attempt, signal: controller.signal, onEvent: (event) => {
-      if (controller.signal.aborted || useChatStore.getState().pendingRequest?.id !== request.id) return;
-      if (event.type === "delta") {
-        received += event.content;
-        if (frame === null) frame = requestAnimationFrame(() => { frame = null; flush(); });
-      } else {
-        flush();
-      }
-    } });
-    finish({ content: reply, status: "done", error: undefined });
-  } catch {
-    finish({ status: "error", error: "Không thể nhận câu trả lời. Vui lòng thử lại." });
+    const serverId = await ensureServerChat(request.conversationId);
+    if (!current()) return;
+    const reply = await api.askQuestion(serverId, content, controller.signal);
+    finish({ ...toMessage(reply), error: undefined });
+  } catch (error) {
+    finish({ status: "error", error: errorText(error) });
   } finally {
-    if (frame !== null) cancelAnimationFrame(frame);
-    if (flushActive === flush) flushActive = null;
     if (activeController === controller) activeController = null;
   }
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   ...initialData(),
+  loadConversations: async () => {
+    if (get().loadingConversations) return;
+
+    const version = epoch;
+    const generation = ++listGeneration;
+
+    set({
+      loadingConversations: true,
+      error: null,
+    });
+
+    try {
+      const chats: api.ApiChat[] = [];
+      let cursor: number | undefined;
+      const seen = new Set<number>();
+
+      do {
+        const page = await api.getChats(cursor);
+
+        if (
+          version !== epoch ||
+          generation !== listGeneration
+        ) {
+          return;
+        }
+
+        chats.push(...page.items);
+
+        if (!page.has_more) {
+          break;
+        }
+
+        if (
+          page.next_cursor === null ||
+          seen.has(page.next_cursor)
+        ) {
+          throw new Error("Invalid cursor");
+        }
+
+        seen.add(page.next_cursor);
+        cursor = page.next_cursor;
+      } while (cursor !== undefined);
+
+      set((state) => {
+        const serverIds: Record<string, string> = {};
+        const messagesByConversation: Record<string, Message[]> = {};
+        const draftsByConversation: Record<string, string> = {};
+
+        // Giữ conversation local nếu nó chưa được gửi lên server
+        const localConversation = state.conversations.find(
+          (conversation) =>
+            conversation.id === LOCAL_CONVERSATION_ID &&
+            !state.serverIds[LOCAL_CONVERSATION_ID]
+        );
+
+        const conversations: Omit<Conversation, "messages">[] = [];
+
+        // Backend trả về danh sách chat
+        for (const chat of chats) {
+          const id = String(chat.id);
+
+          conversations.push({
+            ...chat,
+            id,
+          });
+
+          serverIds[id] = id;
+
+          messagesByConversation[id] =
+            state.messagesByConversation[id] ?? [];
+
+          draftsByConversation[id] =
+            state.draftsByConversation[id] ?? "";
+        }
+
+        // Chỉ giữ local conversation nếu nó thực sự đang có nội dung/draft
+        if (
+          localConversation &&
+          (
+            (state.messagesByConversation[LOCAL_CONVERSATION_ID]?.length ?? 0) > 0 ||
+            state.draftsByConversation[LOCAL_CONVERSATION_ID]?.trim()
+          )
+        ) {
+          conversations.push(localConversation);
+
+          messagesByConversation[LOCAL_CONVERSATION_ID] =
+            state.messagesByConversation[LOCAL_CONVERSATION_ID] ?? [];
+
+          draftsByConversation[LOCAL_CONVERSATION_ID] =
+            state.draftsByConversation[LOCAL_CONVERSATION_ID] ?? "";
+        }
+
+        // Sau F5, nếu conversation hiện tại không còn tồn tại,
+        // chọn conversation server đầu tiên.
+        const currentActiveId = state.activeConversationId;
+
+        const activeStillExists = conversations.some(
+          (conversation) => conversation.id === currentActiveId
+        );
+
+        const activeConversationId =
+          activeStillExists
+            ? currentActiveId
+            : chats.length > 0
+              ? String(chats[0].id)
+              : LOCAL_CONVERSATION_ID;
+
+        return {
+          conversations,
+          serverIds,
+          messagesByConversation,
+          draftsByConversation,
+          activeConversationId,
+          initialized: true,
+        };
+      });
+      
+    } catch (error) {
+      if (
+        version === epoch &&
+        generation === listGeneration
+      ) {
+        set({
+          error: errorText(error),
+        });
+      }
+    } finally {
+      if (
+        version === epoch &&
+        generation === listGeneration
+      ) {
+        set({
+          loadingConversations: false,
+        });
+      }
+    }
+  },
+  loadHistory: async (id) => {
+    const state = get();
+    const serverId = state.serverIds[id];
+    if (!serverId || state.loadingHistory[id] || state.deleting[id] || state.pendingRequest?.conversationId === id) return;
+    const version = epoch;
+    set({ loadingHistory: { ...state.loadingHistory, [id]: true }, historyErrors: { ...state.historyErrors, [id]: "" } });
+    try {
+      const messages: Message[] = [];
+      let cursor: number | undefined;
+      const seen = new Set<number>();
+      do {
+        const page = await api.getMessages(serverId, cursor);
+        if (epoch !== version || !get().conversations.some((chat) => chat.id === id) || get().deleting[id]) return;
+        messages.push(...page.messages.map(toMessage));
+        if (!page.has_more) break;
+        if (page.next_cursor === null || seen.has(page.next_cursor)) throw new Error("Invalid cursor");
+        seen.add(page.next_cursor);
+        cursor = page.next_cursor;
+      } while (cursor !== undefined);
+      set((current) => ({
+        messagesByConversation: {
+          ...current.messagesByConversation,
+          [id]: [
+            ...new Map(
+              messages.map((message) => [message.id, message])
+            ).values()
+          ]
+        },
+        loadedHistory: {
+          ...current.loadedHistory,
+          [id]: true
+        },
+        historyErrors: {
+          ...current.historyErrors,
+          [id]: "",
+        },
+      }));
+    } catch (error) {
+      if (version === epoch && get().conversations.some((chat) => chat.id === id)) set((current) => ({ historyErrors: { ...current.historyErrors, [id]: errorText(error) } }));
+    } finally {
+      if (version === epoch) set((current) => ({ loadingHistory: { ...current.loadingHistory, [id]: false } }));
+    }
+  },
   stopRequest: () => get().cancelRequest("stop"),
   cancelRequest: (reason = "leave") => {
     const request = get().pendingRequest;
     if (!request) return;
-    flushActive?.();
-    flushActive = null;
-    // Invalidate identity before aborting, so even a late result cannot write back.
     set((state) => ({
       pendingRequest: null,
       messagesByConversation: {
         ...state.messagesByConversation,
-        [request.conversationId]: state.messagesByConversation[request.conversationId].map(
-          (message) => message.id === request.messageId
-            ? { ...message, status: reason === "stop" ? "stopped" : "error", error: reason === "stop" ? undefined : "Yêu cầu đã hủy khi rời cuộc trò chuyện. Bạn có thể thử lại." }
-            : message,
-        ),
+        [request.conversationId]: state.messagesByConversation[request.conversationId].map((message) =>
+          message.id === request.messageId ? { ...message, status: reason === "stop" ? "stopped" : "error",
+            error: "Đã hủy chờ. Máy chủ có thể vẫn xử lý; hãy tải lại lịch sử trước khi gửi lại." } : message),
       },
     }));
     activeController?.abort();
@@ -113,116 +346,213 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
   resetChat: () => {
     get().cancelRequest();
+    epoch += 1;
+    creating.clear();
+    listGeneration += 1;
     set(initialData());
   },
   retryMessage: (conversationId, messageId) => {
     const state = get();
-    if (state.pendingRequest) return false;
+    if (state.pendingRequest || state.loadingHistory[conversationId] || state.deleting[conversationId]) return false;
     const messages = state.messagesByConversation[conversationId];
     const message = messages?.at(-1);
     const user = messages?.at(-2);
     if (!message || message.id !== messageId || message.role !== "assistant" || message.status !== "error" || user?.role !== "user") return false;
-    const attempt = (message.attempt ?? 1) + 1;
-    const request = { id: crypto.randomUUID(), conversationId, messageId };
-    set({
-      pendingRequest: request,
-      messagesByConversation: {
-        ...state.messagesByConversation,
-        [conversationId]: messages.map((item) => item.id === messageId
-          ? { ...item, content: "", status: "waiting", error: undefined, attempt }
-          : item),
-      },
-    });
-    void resolveReply(request, user.content, attempt);
+    const request = { id: generateUUID(), conversationId, messageId };
+    set({ pendingRequest: request, messagesByConversation: {
+      ...state.messagesByConversation,
+      [conversationId]: messages.map((item) => item.id === messageId ? { ...item, content: "", status: "waiting", error: undefined } : item),
+    } });
+    void resolveReply(request, user.content);
     return true;
   },
   createConversation: () => {
     const state = get();
-    if (state.messagesByConversation[state.activeConversationId].length === 0) return state.activeConversationId;
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    set({
-      activeConversationId: id,
-      conversations: [{ id, title: "Cuộc trò chuyện mới", created_at: now, updated_at: now }, ...state.conversations],
-      messagesByConversation: { ...state.messagesByConversation, [id]: [] },
-      draftsByConversation: { ...state.draftsByConversation, [id]: "" },
-    });
-    return id;
+    if (!state.serverIds[state.activeConversationId] && state.messagesByConversation[state.activeConversationId]?.length === 0) return state.activeConversationId;
+    return get().startNewConversation();
   },
   startNewConversation: () => {
-    const state = get();
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     const now = new Date().toISOString();
-    set({
+    set((state) => ({
       activeConversationId: id,
       conversations: [{ id, title: "Cuộc trò chuyện mới", created_at: now, updated_at: now }, ...state.conversations],
       messagesByConversation: { ...state.messagesByConversation, [id]: [] },
       draftsByConversation: { ...state.draftsByConversation, [id]: "" },
-    });
+    }));
     return id;
   },
   selectConversation: (id) => {
-    if (get().conversations.some((conversation) => conversation.id === id)) set({ activeConversationId: id });
-  },
-  deleteConversation: (id) => {
-    if (!get().conversations.some((item) => item.id === id)) return;
-    if (get().pendingRequest?.conversationId === id) get().cancelRequest();
     const state = get();
-    const conversations = state.conversations.filter((item) => item.id !== id);
-    if (conversations.length === 0) {
-      set(initialData());
+
+    if (
+      !state.conversations.some((chat) => chat.id === id) ||
+      state.deleting[id]
+    ) {
       return;
     }
-    const messagesByConversation = { ...state.messagesByConversation };
-    const draftsByConversation = { ...state.draftsByConversation };
-    delete messagesByConversation[id];
-    delete draftsByConversation[id];
-    set({
-      conversations,
-      messagesByConversation,
-      draftsByConversation,
-      activeConversationId: state.activeConversationId === id ? conversations[0].id : state.activeConversationId,
-    });
+
+    set((current) => ({
+      activeConversationId: id,
+      historyErrors: {
+        ...current.historyErrors,
+        [id]: "",
+      },
+    }));
+
+    if (
+      !state.loadedHistory[id] &&
+      state.messagesByConversation[id].length === 0
+    ) {
+      void get().loadHistory(id);
+    }
+  },
+  deleteConversation: async (id) => {
+    if (!get().conversations.some((chat) => chat.id === id) || get().deleting[id]) return;
+    if (get().pendingRequest?.conversationId === id) get().cancelRequest();
+    const version = epoch;
+    listGeneration += 1;
+    set((state) => ({ deleting: { ...state.deleting, [id]: true }, loadingConversations: false, error: null }));
+    try {
+      const serverId = get().serverIds[id] ?? await creating.get(id);
+      if (version !== epoch) return;
+      if (serverId) await api.deleteChat(serverId);
+      if (version !== epoch) return;
+      set((state) => {
+        const conversations = state.conversations.filter((chat) => chat.id !== id);
+        const messagesByConversation = { ...state.messagesByConversation };
+        const draftsByConversation = { ...state.draftsByConversation };
+        const serverIds = { ...state.serverIds };
+        delete messagesByConversation[id]; delete draftsByConversation[id]; delete serverIds[id];
+        if (!conversations.length) {
+          const fresh = initialData();
+          return { conversations: fresh.conversations, activeConversationId: fresh.activeConversationId,
+            messagesByConversation: fresh.messagesByConversation, draftsByConversation: fresh.draftsByConversation, serverIds };
+        }
+        return { conversations, messagesByConversation, draftsByConversation, serverIds,
+          activeConversationId: state.activeConversationId === id ? conversations[0].id : state.activeConversationId };
+      });
+      set((state) => {
+        const loadedHistory = { ...state.loadedHistory };
+        const historyErrors = { ...state.historyErrors };
+        delete loadedHistory[id]; delete historyErrors[id];
+        return { loadedHistory, historyErrors };
+      });
+      get().selectConversation(get().activeConversationId);
+    } catch (error) { if (version === epoch) set({ error: errorText(error) }); }
+    finally { if (version === epoch) set((state) => ({ deleting: { ...state.deleting, [id]: false } })); }
   },
   setDraft: (id, value) => {
-    if (!get().conversations.some((conversation) => conversation.id === id)) return;
-    set((state) => ({ draftsByConversation: { ...state.draftsByConversation, [id]: value } }));
+    if (
+      id !== LOCAL_CONVERSATION_ID &&
+      !get().conversations.some(
+        (chat) => chat.id === id
+      )
+    ) {
+      return;
+    }
+
+    set((state) => ({
+      draftsByConversation: {
+        ...state.draftsByConversation,
+        [id]: value,
+      },
+    }));
   },
   sendMessage: (content) => {
     const trimmed = content.trim();
-    if (!trimmed || get().pendingRequest) return false;
+    const state = get();
+    const id = state.activeConversationId;
 
-    const created_at = new Date().toISOString();
+    if (
+      !trimmed ||
+      trimmed.length > 5000 ||
+      state.pendingRequest ||
+      state.loadingHistory[id] ||
+      state.historyErrors[id] ||
+      state.deleting[id]
+    ) {
+      return false;
+    }
+
+    const now = new Date().toISOString();
+
     const messages: Message[] = [
-      { id: crypto.randomUUID(), role: "user", content: trimmed, created_at, status: "done" },
-      { id: crypto.randomUUID(), role: "assistant", content: "", created_at, status: "waiting", attempt: 1 },
+      {
+        id: generateUUID(),
+        role: "user",
+        content: trimmed,
+        created_at: now,
+        status: "done",
+      },
+      {
+        id: generateUUID(),
+        role: "assistant",
+        content: "",
+        created_at: now,
+        status: "waiting",
+      },
     ];
 
-    const id = get().activeConversationId;
-    const request = { id: crypto.randomUUID(), conversationId: id, messageId: messages[1].id };
-    set((state) => {
-      const conversation = state.conversations.find((item) => item.id === id)!;
-      const title = state.messagesByConversation[id].length === 0
-        ? Array.from(trimmed.replace(/\s+/g, " ")).slice(0, 40).join("")
-        : conversation.title;
-      return {
-        pendingRequest: request,
-        conversations: [
-          { ...conversation, title, updated_at: created_at },
-          ...state.conversations.filter((item) => item.id !== id),
-        ],
-        draftsByConversation: { ...state.draftsByConversation, [id]: "" },
-        messagesByConversation: {
-          ...state.messagesByConversation,
-          [id]: [
-            ...state.messagesByConversation[id],
-            ...messages,
-          ],
-        },
+    const request = {
+      id: generateUUID(),
+      conversationId: id,
+      messageId: messages[1].id,
+    };
+
+    const existingConversation =
+      state.conversations.find(
+        (chat) => chat.id === id
+      );
+
+    const conversation =
+      existingConversation ?? {
+        id: LOCAL_CONVERSATION_ID,
+        title: "Cuộc trò chuyện mới",
+        created_at: now,
+        updated_at: now,
       };
+
+    const title =
+      !state.serverIds[id] &&
+      !(state.messagesByConversation[id]?.length ?? 0)
+        ? Array.from(
+            trimmed.replace(/\s+/g, " ")
+          )
+            .slice(0, 40)
+            .join("")
+        : conversation.title;
+
+    set({
+      pendingRequest: request,
+
+      conversations: [
+        {
+          ...conversation,
+          title,
+          updated_at: now,
+        },
+        ...state.conversations.filter(
+          (chat) => chat.id !== id
+        ),
+      ],
+
+      draftsByConversation: {
+        ...state.draftsByConversation,
+        [id]: "",
+      },
+
+      messagesByConversation: {
+        ...state.messagesByConversation,
+        [id]: [
+          ...(state.messagesByConversation[id] ?? []),
+          ...messages,
+        ],
+      },
     });
-    void resolveReply(request, trimmed, 1);
+
+    void resolveReply(request, trimmed);
+
     return true;
   },
 }));
-

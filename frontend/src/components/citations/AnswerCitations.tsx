@@ -25,10 +25,9 @@ export const AnswerWithCitations: React.FC<AnswerWithCitationsProps> = ({
 
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-      el.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-50/70');
+      el.classList.add('selected');
       setTimeout(() => {
-        el.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50/70');
+        el.classList.remove('selected');
       }, 1500);
     }
   };
@@ -36,8 +35,9 @@ export const AnswerWithCitations: React.FC<AnswerWithCitationsProps> = ({
   const parts = content.split(/(\[\[?\d+\]?\])/g);
 
   return (
-    <div className="space-y-3.5">
-      <div className="text-sm leading-relaxed text-slate-800 whitespace-pre-wrap">
+    <div className="answer-citations-container">
+      {/* 1. Phần nội dung câu trả lời kèm huy hiệu [1], [2] */}
+      <div className="answer-citations-text">
         {parts.map((part, idx) => {
           const match = part.match(/\[\[?(\d+)\]?\]/);
           if (match) {
@@ -48,13 +48,16 @@ export const AnswerWithCitations: React.FC<AnswerWithCitationsProps> = ({
             return (
               <span
                 key={idx}
-                className={`transition-all duration-200 inline-block rounded ${
-                  isHovered ? 'bg-amber-100 ring-2 ring-amber-400 font-bold scale-105' : ''
-                }`}
+                style={{
+                  display: 'inline-block',
+                  transition: 'all 0.2s',
+                  transform: isHovered ? 'scale(1.15)' : 'none',
+                }}
               >
                 <CitationBadge
                   citationId={citeId}
                   citation={cite}
+                  isActive={selectedCitation?.citation_id === citeId}
                   onClick={handleSelectCitation}
                 />
               </span>
@@ -64,23 +67,23 @@ export const AnswerWithCitations: React.FC<AnswerWithCitationsProps> = ({
         })}
       </div>
 
+      {/* 2. Phần chân trang: Khối Card danh sách tài liệu tham khảo */}
       {citations.length > 0 && (
-        <div className="pt-2.5 border-t border-slate-100">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-              <span>Nguồn tài liệu tham chiếu ({citations.length}):</span>
-            </p>
-            <span className="text-[10px] text-slate-400 italic">
-              Click để mở toàn văn tài liệu
+        <div className="citations-footer">
+          <div className="citations-footer-header">
+            <h5 className="citations-title">
+              <span>📚 Nguồn tài liệu tham chiếu ({citations.length}):</span>
+            </h5>
+            <span className="citations-hint">
+              Bấm vào thẻ để xem chi tiết văn bản gốc
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="source-cards-grid">
             {citations.map((c) => (
               <div
                 key={c.citation_id}
                 id={`source-card-${instanceId}-${c.citation_id}`}
-                className="transition-all duration-300 rounded-xl"
                 onMouseEnter={() => setHoveredCitationId(c.citation_id)}
                 onMouseLeave={() => setHoveredCitationId(null)}
               >
@@ -95,6 +98,7 @@ export const AnswerWithCitations: React.FC<AnswerWithCitationsProps> = ({
         </div>
       )}
 
+      {/* 3. Ngăn kéo trượt xem chi tiết văn bản gốc */}
       <SourceDrawer
         citation={selectedCitation}
         onClose={() => setSelectedCitation(null)}
@@ -102,4 +106,3 @@ export const AnswerWithCitations: React.FC<AnswerWithCitationsProps> = ({
     </div>
   );
 };
-

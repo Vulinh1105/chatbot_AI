@@ -1,7 +1,7 @@
-"""Register test files placed in backend/documents/test and index them.
+"""Register test files placed in backend/documents/test_documents and index them.
 
 Usage from the repository root:
-    python "backend/app/doc_processing/test code/test_ingestion.py" --owner-id 3
+    python "backend/app/doc_processing/test code/test_ingestion.py" --owner-id (insert user id)
 
 In Docker:
     docker compose exec app python "/app/backend/app/doc_processing/test code/test_ingestion.py" --owner-id 3
@@ -21,7 +21,7 @@ from app.core.config import settings
 from app.database import AsyncSessionLocal
 from app.doc_processing.chunking import load_all_chunks
 from app.doc_processing.parsing import SUPPORTED_EXTENSIONS
-from app.doc_processing.pipeline import run_pipeline_for_document
+from app.doc_processing.pipeline import IndexingStatus, run_pipeline_for_document
 from app.model.document import Document
 
 logger = logging.getLogger(__name__)
@@ -30,12 +30,18 @@ logger = logging.getLogger(__name__)
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Index files dropped into backend/documents.")
     parser.add_argument("--owner-id", type=int, required=True, help="User id owning the dropped files.")
+    parser.add_argument(
+        "--strategy",
+        choices=("fixed_overlap", "recursive_paragraph", "semantic"),
+        default="fixed_overlap",
+        help="Chunking strategy. Defaults to fixed_overlap so the test does not require OpenAI.",
+    )
     return parser.parse_args()
 
 
-async def _index_folder(owner_id: int) -> None:
+async def _index_folder(owner_id: int, strategy: str) -> None:
     storage_root = Path(settings.documents_dir).resolve()
-    test_dir = storage_root / "test"
+    test_dir = storage_root / "test_documents"
     test_dir.mkdir(parents=True, exist_ok=True)
 
     async with AsyncSessionLocal() as db:
@@ -70,7 +76,9 @@ async def _index_folder(owner_id: int) -> None:
             await db.refresh(document)
 
             try:
-                result = await run_pipeline_for_document(document.id, db)
+                result = await run_pipeline_for_document(document.id, db, strategy=strategy)
+                if result.status is IndexingStatus.FAILED:
+                    raise RuntimeError(result.error or "document pipeline failed")
                 print(
                     f"{source_path.name}: document_id={document.id} "
                     f"status={result.status.value} chunks={result.chunk_count}"
@@ -87,7 +95,7 @@ async def _index_folder(owner_id: int) -> None:
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     args = _parse_args()
-    asyncio.run(_index_folder(args.owner_id))
+    asyncio.run(_index_folder(args.owner_id, args.strategy))
 
 
 if __name__ == "__main__":

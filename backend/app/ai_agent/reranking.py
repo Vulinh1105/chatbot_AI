@@ -4,19 +4,24 @@ from langchain_core.documents import Document
 from sentence_transformers import CrossEncoder
 
 
-DEFAULT_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L6-v2" #tên model rerank, có thể thay bằng model khác
-DEFAULT_TOP_K = 5 #output top k documents sau khi rerank
+# sd cross model
+DEFAULT_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
+DEFAULT_TOP_K = 5
 DEFAULT_BATCH_SIZE = 8
+DEFAULT_DEVICE = "cpu"
 
-
+# đóng gói all chức năng của reranking
 class Reranker:
+
+    # khởi tạo model
     def __init__(
         self,
         model_name: str = DEFAULT_MODEL_NAME,
-        device: str = "cpu",
+        device: str = DEFAULT_DEVICE,
+        batch_size: int = DEFAULT_BATCH_SIZE,
     ) -> None:
-        # Tải mô hình reranker một lần khi khởi tạo đối tượng.
         self.model_name = model_name
+        self.batch_size = batch_size
         self.model = CrossEncoder(
             model_name,
             device=device,
@@ -24,21 +29,24 @@ class Reranker:
 
     def rerank(
         self,
-        query: str, #câu hỏi của người dùng
-        documents: list[Document], #top N chunk nhận từ retriever
-        top_k: int = DEFAULT_TOP_K, #trả về top k chunk sau khi rerank và thời gian rerank
+        query: str,
+        documents: list[Document], # nhận output từ retrieval.py
+        top_k: int = DEFAULT_TOP_K,
     ) -> tuple[list[Document], float]:
-        # Kiểm tra câu hỏi.
-        if not query or not query.strip():
-            raise ValueError("Query không được để trống.")
 
+        # ktra query
+        if not query or not query.strip():
+            raise ValueError("query must not be empty")
+
+        # ktra top_k
         if top_k <= 0:
-            raise ValueError("top_k phải lớn hơn 0.")
+            raise ValueError("top_k must be greater than 0")
 
         if not documents:
             return [], 0.0
 
-        query_document_pairs = [
+        # tao cặp Query + Document
+        pairs = [
             (query, document.page_content)
             for document in documents
         ]
@@ -46,45 +54,44 @@ class Reranker:
         start_time = perf_counter()
 
         scores = self.model.predict(
-            query_document_pairs,
-            batch_size=DEFAULT_BATCH_SIZE,
+            pairs,
+            batch_size=self.batch_size,
             show_progress_bar=False,
-        ) #model chấm điểm
+        )
 
         latency_ms = (perf_counter() - start_time) * 1000
-
+        # tạo list chứa kqua
         ranked_documents = []
 
-        # Gắn điểm và thứ hạng retrieval ban đầu vào metadata.
+        # ghép Document với score
         for retrieval_rank, (document, score) in enumerate(
             zip(documents, scores),
             start=1,
         ):
-            new_metadata = document.metadata.copy()
-            new_metadata["retrieval_rank"] = retrieval_rank #lưu thứ hạng
-            new_metadata["rerank_score"] = float(score) #lưu điểm rerank
+            # copy metadata -> bổ sung ttin reranking/ k sửa trực tiếp vào metadata ban đầu
+            metadata = dict(document.metadata)
 
-            ranked_document = Document(
-                page_content=document.page_content,
-                metadata=new_metadata,
+            metadata["retrieval_rank"] = retrieval_rank
+            metadata["rerank_score"] = float(score)
+
+            # tạo Document mứi
+            ranked_documents.append(
+                Document(
+                    page_content=document.page_content,
+                    metadata=metadata,
+                )
             )
 
-            ranked_documents.append(ranked_document)
-
-        # Sắp xếp điểm rerank từ cao xuống thấp.
+        # sắp xếp lại theo score
         ranked_documents.sort(
             key=lambda document: document.metadata["rerank_score"],
             reverse=True,
         )
-
-        # Gắn thứ hạng mới sau khi rerank.
+        # gán rerank_rank
         for rerank_rank, document in enumerate(
             ranked_documents,
             start=1,
         ):
             document.metadata["rerank_rank"] = rerank_rank
 
-        # Trả về Top-K chunk và thời gian rerank.
         return ranked_documents[:top_k], latency_ms
-
-# print('reranking done')

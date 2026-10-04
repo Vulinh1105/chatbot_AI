@@ -1,4 +1,5 @@
 import api from "./api";
+import type { User } from "../types/auth";
 
 export interface RegisterRequest {
   username: string;
@@ -23,5 +24,10 @@ export const register = async (data: RegisterRequest) => {
 
 export const login = async (data: LoginRequest): Promise<AuthResponse> => {
   const response = await api.post("/api/v1/auth/login/json", data);
+  return response.data;
+};
+
+export const getCurrentUser = async (): Promise<User> => {
+  const response = await api.get("/api/v1/users/me");
   return response.data;
 };
